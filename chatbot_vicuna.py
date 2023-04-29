@@ -1,4 +1,5 @@
 import os
+import re
 import torch
 import click
 import gradio as gr
@@ -13,7 +14,7 @@ from typing import Optional, List, Mapping, Any
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 
 os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 # define prompt helper
 # set maximum input size
 max_input_size = 2048
@@ -35,14 +36,21 @@ print(f"Using device: {device}")
 
 class CustomLLM(LLM):
     model_name = "eachadea/vicuna-13b-1.1"
-    model_pipeline = pipeline(model=model_name, device_map = 'auto', trust_remote_code=True, model_kwargs={"torch_dtype": torch.bfloat16})
+    model_pipeline = pipeline("text-generation", model=model_name, device_map = 'auto', 
+                              trust_remote_code=True, model_kwargs={"torch_dtype": torch.bfloat16},
+                              max_length=2048)
+
+    def remove_html_tags(self, text):
+        clean = re.compile('<.*?>')
+        return re.sub(clean, '', text)
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         print(prompt, type(prompt))
         res = self.model_pipeline(str(prompt))
         print(res, type(res))
         if len(res) >= 1:
-            return res[0].get("generated_text")
+            generated_text = res[0].get("generated_text")[len(prompt):]
+            return generated_text
         else:
             return "Don't know the answer"
 
@@ -108,7 +116,7 @@ def query(index_filepath):
                              outputs="text",
                              title="Custom-trained AI Chatbot")
 
-        iface.launch(share=True)
+        iface.queue().launch(debug=True, share=True, inline=False)
     else:
         print("Index file not found.")
         return
