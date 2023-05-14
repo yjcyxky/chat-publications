@@ -63,3 +63,66 @@ Answer: B) Long Covid is a cause of Fatigue
 Explanation:
 The text states that Long Covid can cause fatigue and that this fatigue is different from physiological fatigue, which is easily cured by rest. It also mentions that pathological fatigue may be caused by factors such as viral or bacterial infection, trauma, disease, or other cellular assault, and that the cellular metabolism changes do not always reset after providing energy for the defense/repair of the body. Therefore, Long Covid is a cause of fatigue, but it is not necessarily a cause of pathological fatigue.
 ```
+
+### How to run vicuna?
+
+#### Download the LLama model
+
+```
+python get_llama.py
+
+# ValueError: Tokenizer class LLaMATokenizer does not exist or is not currently imported.
+# Avoid to use AutoTokenizer and AutoModelForCausalLM
+```
+
+#### Install fschat
+
+```
+pip3 install fschat
+```
+
+### Apply the vicuna-13b-delta weight on the LLama model
+
+```
+python3 -m fastchat.model.apply_delta \
+    --base-model-path /root/.cache/huggingface/hub/models--decapoda-research--llama-13b-hf/snapshots/438770a656712a5072229b62256521845d4de5ce \
+    --target-model-path /root/vicuna-13b \
+    --delta-path lmsys/vicuna-13b-delta-v1.1
+```
+
+#### Run fschat
+
+To serve using the web UI, you need three main components: web servers that interface with users, model workers that host one or more models, and a controller to coordinate the webserver and model workers. You can learn more about the architecture here.
+Here are the commands to follow in your terminal:
+
+- Launch the controller
+
+```
+python3 -m fastchat.serve.controller
+```
+
+This controller manages the distributed workers.
+
+- Launch the model worker(s)
+
+```
+python3 -m fastchat.serve.model_worker --model-path /path/to/model/weights
+```
+
+Wait until the process finishes loading the model and you see "Uvicorn running on ...". The model worker will register itself to the controller .
+
+- Launch the Gradio web server
+
+```
+python3 -m fastchat.serve.gradio_web_server
+```
+
+This is the user interface that users will interact with.
+
+By following these steps, you will be able to serve your models using the web UI. You can open your browser and chat with a model now. If the models do not show up, try to reboot the gradio web server.
+
+- Launch the server which is compatible with OpenAI's API
+
+```
+python3 -m fastchat.serve.openai_api_server --host localhost --port 8000
+```

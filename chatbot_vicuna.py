@@ -14,12 +14,13 @@ from typing import Optional, List, Mapping, Any
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 
 os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 # define prompt helper
 # set maximum input size
 max_input_size = 2048
 # set number of output tokens
-num_output = 256
+num_output = 512
 # set maximum chunk overlap
 max_chunk_overlap = 20
 
@@ -35,10 +36,11 @@ print(f"Using device: {device}")
 
 
 class CustomLLM(LLM):
-    model_name = "eachadea/vicuna-13b-1.1"
+    # model_name = "eachadea/vicuna-13b-1.1"
+    model_name = "lmsys/vicuna-7b-delta-v1.1"
     model_pipeline = pipeline("text-generation", model=model_name, device_map = 'auto', 
-                              trust_remote_code=True, model_kwargs={"torch_dtype": torch.bfloat16},
-                              max_length=2048)
+                              trust_remote_code=True, model_kwargs={"torch_dtype": torch.bfloat16, "load_in_8bit": True},
+                              max_length=max_input_size)
 
     def remove_html_tags(self, text):
         clean = re.compile('<.*?>')
@@ -100,7 +102,7 @@ def index(directory_path):
     doc_index = GPTSimpleVectorIndex.from_documents(
         documents, service_context=service_context)
 
-    doc_index.save_to_disk(os.path.join(directory_path, 'index.json'))
+    doc_index.save_to_disk(os.path.join(directory_path, 'index-vicuna.json'))
 
     return index
 

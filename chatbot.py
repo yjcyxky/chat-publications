@@ -2,10 +2,14 @@ import gradio as gr
 import click
 import json
 import os
-from gpt_index import SimpleDirectoryReader, ServiceContext, GPTSimpleVectorIndex, LLMPredictor, PromptHelper
+from llama_index import SimpleDirectoryReader, ServiceContext, GPTSimpleVectorIndex, LLMPredictor, PromptHelper
 from langchain import OpenAI
 
-os.environ["OPENAI_API_KEY"] = "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"
+# os.environ["OPENAI_API_KEY"] = "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"
+model_name = "text-davinci-003"
+os.environ["OPENAI_API_KEY"] = "EMPTY" # Not support yet
+os.environ["OPENAI_API_BASE"] = "http://localhost:8000/v1"
+# model_name = "vicuna-13b"
 
 
 def check_variable():
@@ -43,7 +47,7 @@ def index(directory_path):
         max_input_size, num_outputs, max_chunk_overlap, chunk_size_limit=chunk_size_limit)
 
     llm_predictor = LLMPredictor(llm=OpenAI(
-        temperature=0.7, model_name="text-davinci-003", max_tokens=num_outputs))
+        temperature=0.7, model_name=model_name, max_tokens=num_outputs))
 
     documents = SimpleDirectoryReader(directory_path).load_data()
 
@@ -86,7 +90,7 @@ def query(index_filepath):
                              outputs="text",
                              title="Custom-trained AI Chatbot")
 
-        iface.launch(share=True)
+        iface.launch(share=False)
     else:
         print("Index file not found.")
         return
