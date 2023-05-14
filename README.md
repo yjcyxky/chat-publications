@@ -126,9 +126,3 @@ By following these steps, you will be able to serve your models using the web UI
 ```
 python3 -m fastchat.serve.openai_api_server --host localhost --port 8000
 ```
-
-### Replace the openai.py file in the llama-index library
-
-```
-cp embeddings/openai.py /xxx/site-packages/llama_index/embeddings/openai.py
-```
