@@ -18,7 +18,7 @@ def test_completion():
 
 
 def test_embedding():
-    embedding = openai.Embedding.create(model=model, input="Accordingly, retrospective analysis in 300 ME/ CFS patients indicated a decrease in IgG3 and 4, but an increase in IgG2 and IgM.[36,217,218] (continued on next page )O.A. Sukocheva, R. Maksoud, N.M. Beeraka et al. Journal of Advanced Research 40 (2022) 179–196 183 Table 1 (continued ) Author/year COVID-19 Immunologic changesME/CFS Author/year [46,96,219,220] B cells were gradually decreased (loss of transitional and follicular B cells) with increased severity of illness. SARS-CoV-2 spike-speciﬁc neutralizing antibodies, memory B cells and circulating T FH cells may be lowered in COVID-19 non- survivors. Reduced numbers of in Bcl-6+germinal centres/B cells were detected post mortem in thoracic lymph nodes and spleens in acute SARS-CoV-2 cases.B cells Dysregulated numbers of naïve, transitional, and memory B cells were reported in subsets of")
+    embedding = openai.Embedding.create(model=model, input="Hello world!")
     print(len(embedding["data"][0]["embedding"]))
 
 

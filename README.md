@@ -1,7 +1,152 @@
+# Chat Publications
+Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data. This repository will show you how to do it.
+
+## How to run vicuna with llama-index?
+
+### Clone the current repository
+
+```
+git clone https://github.com/yjcyxky/chat-publications.git
+cd chat-publications
+```
+
+### Make an environment for llama-index and vicuna
+
+```bash
+conda create -n llama-index python=3.11.3
+conda activate llama-index
+
+# If you have any problem at this step, please post an issue
+pip3 install -r requirements.txt
+```
+
+
+### Download the LLama model
+
+Get the llama-13b model weights from decapoda-research/llama-13b-hf
+
+```
+python get_llama.py
+
+# ValueError: Tokenizer class LLaMATokenizer does not exist or is not currently imported.
+# Avoid to use AutoTokenizer and AutoModelForCausalLM
+```
+
+### Apply the vicuna-13b-delta weight on the LLama model
+
+CAUTION: It assumes that 
+1. you have got the llama-13b model weights in `/root/.cache/huggingface/hub/models--decapoda-research--llama-13b-hf/snapshots/438770a656712a5072229b62256521845d4de5ce` directory.
+2. the output directory is `/data/vicuna-13b` directory.
+
+```
+python3 -m fastchat.model.apply_delta \
+    --base-model-path /root/.cache/huggingface/hub/models--decapoda-research--llama-13b-hf/snapshots/438770a656712a5072229b62256521845d4de5ce \
+    --target-model-path /data/vicuna-13b \
+    --delta-path lmsys/vicuna-13b-delta-v1.1
+```
+
+### Launch all services by systemd
+
+#### Copy all files in systemd directory to /etc/systemd/system/ and start all services
+
+CAUTION: It assumes that 
+1. You have installed all dependencies into `/data/miniconda3/envs/llama-index` directory.
+2. You have vicuna-13b model in `/data/vicuna-13b` directory.
+
+```bash
+cp -r systemd/* /etc/systemd/system/
+
+systemctl daemon-reload
+
+# Launch the controller
+systemctl start vicuna-controller.service
+
+# Launch the model worker(s)
+# The following step need to wait for a while, you can check the status by `journalctl -u vicuna-worker.service`
+# If you can see "Uvicorn running on ...", it means that the model worker is ready.
+systemctl start vicuna-worker.service
+
+# Launch the openai compatible server
+systemctl start vicuna-openai.service
+
+# How to check the status of all services?
+python3 test_vicuna_openai_api.py
+```
+
+### Launch all services step by step manually
+#### Run fschat
+
+To serve using the web UI, you need three main components: web servers that interface with users, model workers that host one or more models, and a controller to coordinate the webserver and model workers. You can learn more about the architecture here.
+Here are the commands to follow in your terminal:
+
+- Launch the controller
+
+```
+python3 -m fastchat.serve.controller
+```
+
+This controller manages the distributed workers.
+
+- Launch the model worker(s)
+
+```
+python3 -m fastchat.serve.model_worker --model-path /data/vicuna-13b
+```
+
+Wait until the process finishes loading the model and you see "Uvicorn running on ...". The model worker will register itself to the controller .
+
+- Launch the Gradio web server
+
+```
+python3 -m fastchat.serve.gradio_web_server
+```
+
+This is the user interface that users will interact with.
+
+By following these steps, you will be able to serve your models using the web UI. You can open your browser and chat with a model now. If the models do not show up, try to reboot the gradio web server.
+
+- Launch the server which is compatible with OpenAI's API
+
+```
+python3 -m fastchat.serve.openai_api_server --host localhost --port 8000 http://localhost:21001
+```
+
+### Build index for my own data
+
+CAUTION: It assumes that your data is in `${PWD}/docs/my-project` directory.
+
+```
+# Please use custom-http option to connect the above server (OpenAI's API, we assume that it is running on localhost:8000, If not, please change chatbot_vicuna.py file)
+python3 chatbot_vicuna.py index -d docs/my-project -l custom-http
+```
+
+### Launch chatbot server
+
+After this step, you will get your own chatbot server at http://localhost:7860
+
+```
+# By systemd
+systemctl start chatbot.service
+
+# Manually
+/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d docs/my-project -l custom-http
+```
+
+### [Optional] Proxy chatbot server with nginx
+
+```
+cp nginx/chatbot.conf /etc/nginx/conf.d/
+
+# Modify the chatbot.conf file to change the server_name and proxy_pass based on your own environment
+
+systemctl restart nginx
+```
+
+## How to run ChatGPT with llama-index?
 ### How to build index for my own data?
 
 ```
-python chatbot.py index -d docs/type2-dm
+python chatbot.py index -d docs/my-project
 ```
 
 ### Examples
@@ -62,67 +207,4 @@ Answer: B) Long Covid is a cause of Fatigue
 
 Explanation:
 The text states that Long Covid can cause fatigue and that this fatigue is different from physiological fatigue, which is easily cured by rest. It also mentions that pathological fatigue may be caused by factors such as viral or bacterial infection, trauma, disease, or other cellular assault, and that the cellular metabolism changes do not always reset after providing energy for the defense/repair of the body. Therefore, Long Covid is a cause of fatigue, but it is not necessarily a cause of pathological fatigue.
-```
-
-### How to run vicuna?
-
-#### Download the LLama model
-
-```
-python get_llama.py
-
-# ValueError: Tokenizer class LLaMATokenizer does not exist or is not currently imported.
-# Avoid to use AutoTokenizer and AutoModelForCausalLM
-```
-
-#### Install fschat
-
-```
-pip3 install fschat
-```
-
-### Apply the vicuna-13b-delta weight on the LLama model
-
-```
-python3 -m fastchat.model.apply_delta \
-    --base-model-path /root/.cache/huggingface/hub/models--decapoda-research--llama-13b-hf/snapshots/438770a656712a5072229b62256521845d4de5ce \
-    --target-model-path /root/vicuna-13b \
-    --delta-path lmsys/vicuna-13b-delta-v1.1
-```
-
-#### Run fschat
-
-To serve using the web UI, you need three main components: web servers that interface with users, model workers that host one or more models, and a controller to coordinate the webserver and model workers. You can learn more about the architecture here.
-Here are the commands to follow in your terminal:
-
-- Launch the controller
-
-```
-python3 -m fastchat.serve.controller
-```
-
-This controller manages the distributed workers.
-
-- Launch the model worker(s)
-
-```
-python3 -m fastchat.serve.model_worker --model-path /path/to/model/weights
-```
-
-Wait until the process finishes loading the model and you see "Uvicorn running on ...". The model worker will register itself to the controller .
-
-- Launch the Gradio web server
-
-```
-python3 -m fastchat.serve.gradio_web_server
-```
-
-This is the user interface that users will interact with.
-
-By following these steps, you will be able to serve your models using the web UI. You can open your browser and chat with a model now. If the models do not show up, try to reboot the gradio web server.
-
-- Launch the server which is compatible with OpenAI's API
-
-```
-python3 -m fastchat.serve.openai_api_server --host localhost --port 8000
 ```

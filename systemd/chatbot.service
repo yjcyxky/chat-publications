@@ -1,0 +1,14 @@
+[Unit]
+Description=ChatBot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/chat-publications
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d docs/my-project -l custom-http
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
