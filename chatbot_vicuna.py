@@ -1,3 +1,4 @@
+from llama_index.readers.file.base_parser import BaseParser
 import openai
 import os
 import re
@@ -7,41 +8,12 @@ import gradio as gr
 from langchain.llms.base import LLM
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, LLMPredictor, ServiceContext, LangchainEmbedding, PromptHelper
+from llama_index.readers.file.tabular_parser import PandasCSVParser
+from llama_index.readers.file.base import DEFAULT_FILE_EXTRACTOR
 from llama_index import StorageContext, load_index_from_storage
 from llama_index.langchain_helpers.text_splitter import TokenTextSplitter
 from llama_index.node_parser.simple import SimpleNodeParser
-from typing import Optional, List, Mapping, Any, Type, Dict
-
-from llama_index.readers.base import BaseReader
-from llama_index.readers.file.docs_reader import DocxReader, PDFReader
-from llama_index.readers.json.json_reader import JSONReader
-from llama_index.readers.file.epub_reader import EpubReader
-from llama_index.readers.file.image_reader import ImageReader
-from llama_index.readers.file.ipynb_reader import IPYNBReader
-from llama_index.readers.file.markdown_reader import MarkdownReader
-from llama_index.readers.file.mbox_reader import MboxReader
-from llama_index.readers.file.slides_reader import PptxReader
-from llama_index.readers.file.tabular_reader import PandasCSVReader
-from llama_index.readers.file.video_audio_reader import VideoAudioReader
-
-# If you have any other readers, you can add them here
-DEFAULT_FILE_READER_CLS: Dict[str, Type[BaseReader]] = {
-    ".pdf": PDFReader,
-    ".docx": DocxReader,
-    ".pptx": PptxReader,
-    ".jpg": ImageReader,
-    ".png": ImageReader,
-    ".jpeg": ImageReader,
-    ".mp3": VideoAudioReader,
-    ".mp4": VideoAudioReader,
-    ".csv": PandasCSVReader,
-    ".epub": EpubReader,
-    ".md": MarkdownReader,
-    ".mbox": MboxReader,
-    ".ipynb": IPYNBReader,
-    '.json': JSONReader,
-}
-
+from typing import Callable, Dict, Optional, List, Mapping, Any
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
 OPENAI_API_BASE = "http://localhost:8000/v1"
@@ -56,6 +28,20 @@ max_input_size = 2048
 num_output = 512
 # set maximum chunk overlap
 max_chunk_overlap = 20
+
+
+class CustomPandasCSVParser(PandasCSVParser):
+    def __init__(self, *args: Any, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n", pandas_config: dict = ..., **kwargs: Any) -> None:
+        super().__init__(*args, concat_rows=concat_rows, col_joiner=col_joiner,
+                         row_joiner=row_joiner, pandas_config=pandas_config, **kwargs)
+
+        self._pandas_config = self._pandas_config.update({"delimiter": "\t"})
+
+
+CUSTOM_FILE_READER_CLS = {
+    **DEFAULT_FILE_EXTRACTOR,
+    "tsv": CustomPandasCSVParser
+}
 
 
 class CustomHttpLLM(LLM):
@@ -186,7 +172,7 @@ def get_service_context(llm_type="custom"):
 def index(directory_path, llm_type):
     service_context = get_service_context(llm_type)
     documents = SimpleDirectoryReader(
-        directory_path, file_extractor=DEFAULT_FILE_READER_CLS
+        directory_path, file_extractor=CUSTOM_FILE_READER_CLS
     ).load_data()
 
     doc_index = GPTVectorStoreIndex.from_documents(

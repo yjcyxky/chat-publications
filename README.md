@@ -142,6 +142,13 @@ cp nginx/chatbot.conf /etc/nginx/conf.d/
 systemctl restart nginx
 ```
 
+### Convert json to csv
+
+```
+apt-get install jq csvkit
+jq -r '.[] | @csv' input.json | csvformat -T > output.csv
+```
+
 ## How to run ChatGPT with llama-index?
 ### How to build index for my own data?
 
