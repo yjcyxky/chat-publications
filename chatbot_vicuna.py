@@ -1,3 +1,4 @@
+import openai
 import os
 import re
 import click
@@ -9,9 +10,38 @@ from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, LLMPredictor
 from llama_index import StorageContext, load_index_from_storage
 from llama_index.langchain_helpers.text_splitter import TokenTextSplitter
 from llama_index.node_parser.simple import SimpleNodeParser
-from typing import Optional, List, Mapping, Any
+from typing import Optional, List, Mapping, Any, Type, Dict
 
-import openai
+from llama_index.readers.base import BaseReader
+from llama_index.readers.file.docs_reader import DocxReader, PDFReader
+from llama_index.readers.json.json_reader import JSONReader
+from llama_index.readers.file.epub_reader import EpubReader
+from llama_index.readers.file.image_reader import ImageReader
+from llama_index.readers.file.ipynb_reader import IPYNBReader
+from llama_index.readers.file.markdown_reader import MarkdownReader
+from llama_index.readers.file.mbox_reader import MboxReader
+from llama_index.readers.file.slides_reader import PptxReader
+from llama_index.readers.file.tabular_reader import PandasCSVReader
+from llama_index.readers.file.video_audio_reader import VideoAudioReader
+
+# If you have any other readers, you can add them here
+DEFAULT_FILE_READER_CLS: Dict[str, Type[BaseReader]] = {
+    ".pdf": PDFReader,
+    ".docx": DocxReader,
+    ".pptx": PptxReader,
+    ".jpg": ImageReader,
+    ".png": ImageReader,
+    ".jpeg": ImageReader,
+    ".mp3": VideoAudioReader,
+    ".mp4": VideoAudioReader,
+    ".csv": PandasCSVReader,
+    ".epub": EpubReader,
+    ".md": MarkdownReader,
+    ".mbox": MboxReader,
+    ".ipynb": IPYNBReader,
+    '.json': JSONReader,
+}
+
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
 OPENAI_API_BASE = "http://localhost:8000/v1"
@@ -26,6 +56,7 @@ max_input_size = 2048
 num_output = 512
 # set maximum chunk overlap
 max_chunk_overlap = 20
+
 
 class CustomHttpLLM(LLM):
     model_name = "vicuna-13b"
@@ -112,7 +143,8 @@ def launch_chatbot(persist_dir, llm_type="custom"):
     # rebuild storage context
     storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     # load index
-    index = load_index_from_storage(storage_context, service_context=service_context).as_query_engine()
+    index = load_index_from_storage(
+        storage_context, service_context=service_context).as_query_engine()
 
     def chatbot(input_text):
         print("Input: %s" % input_text)
@@ -142,7 +174,7 @@ def get_service_context(llm_type="custom"):
         chunk_size=512, chunk_overlap=max_chunk_overlap))
     prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
     service_context = ServiceContext.from_defaults(
-        llm_predictor=llm_predictor, embed_model=embed_model, 
+        llm_predictor=llm_predictor, embed_model=embed_model,
         prompt_helper=prompt_helper, node_parser=node_parser, chunk_size_limit=512
     )
     return service_context
@@ -153,7 +185,9 @@ def get_service_context(llm_type="custom"):
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 def index(directory_path, llm_type):
     service_context = get_service_context(llm_type)
-    documents = SimpleDirectoryReader(directory_path).load_data()
+    documents = SimpleDirectoryReader(
+        directory_path, file_extractor=DEFAULT_FILE_READER_CLS
+    ).load_data()
 
     doc_index = GPTVectorStoreIndex.from_documents(
         documents, service_context=service_context
