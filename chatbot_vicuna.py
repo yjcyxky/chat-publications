@@ -165,7 +165,7 @@ def launch_chatbot(persist_dir, llm_type="custom"):
     # Remove nodes with similarity < 0.9
     filter_nodes_with_similarity = FilterNodes(similarity=0.9)
 
-    api_key = os.environ["COHERE_API_KEY"]
+    api_key = os.environ.get("COHERE_API_KEY")
     if api_key:
         print("Using CohereRerank...")
         cohere_rerank = CohereRerank(api_key=api_key, top_n=2)

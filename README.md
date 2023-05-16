@@ -3,6 +3,8 @@ Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external 
 
 If you want to know more details about LLM and LLAMA index, please access [more resources](./resources.md)
 
+If you want to download all metadata of publications from PubMed, please access [here](./pubmed/README.md)
+
 ## How to run vicuna with llama-index?
 
 ### Clone the current repository
