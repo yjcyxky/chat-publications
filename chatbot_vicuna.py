@@ -149,12 +149,33 @@ class CustomLLM(LLM):
     @property
     def _llm_type(self) -> str:
         return "custom"
+    
+
+def get_qdrant_store(persist_dir):
+    import qdrant_client
+    from llama_index.vector_stores import QdrantVectorStore
+    # Creating a Qdrant vector store
+    client = qdrant_client.QdrantClient(path=persist_dir)
+    collection_name = "vicuna"
+
+    # construct vector store
+    vector_store = QdrantVectorStore(
+        client=client,
+        collection_name=collection_name,
+    )
+    return vector_store
 
 
-def launch_chatbot(persist_dir, llm_type="custom"):
+def launch_chatbot(persist_dir, index_type="default", llm_type="custom"):
     service_context = get_service_context(llm_type)
     # rebuild storage context
-    storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
+    if index_type == "default":
+        storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
+    elif index_type == "qdrant":
+        vector_store = get_qdrant_store(persist_dir)
+        storage_context = StorageContext.from_defaults(
+            vector_store=vector_store
+        )
     # load index
     index = load_index_from_storage(
         storage_context,
@@ -216,12 +237,25 @@ def get_service_context(llm_type="custom"):
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--mode', '-m', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
-def index(directory_path, llm_type, mode):
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
+@click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
+def index(directory_path, llm_type, mode, index_type, persist_dir):
     service_context = get_service_context(llm_type)
+    if index_type == "default":
+        storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
+    elif index_type == "qdrant":
+        vector_store = get_qdrant_store(persist_dir)
+        storage_context = StorageContext.from_defaults(
+            vector_store=vector_store
+        )
+    else:
+        raise ValueError(f"Invalid index_type: {index_type}")
+
     if mode == "node":
         import uuid
         from llama_index.data_structs.node import Node
         nodes = []
+        # TODO: When the number of documents is large, we should use a more efficient way to load the data.
         for file in os.listdir(directory_path):
             # Treat each .txt file as a node, and the content of the file as the text of the node.
             # So we can load the whole file as the context of query. It maybe a good idea when you want to
@@ -232,14 +266,19 @@ def index(directory_path, llm_type, mode):
                     text = f.read()
                     node = Node(text=text, doc_id=uuid_str)
                     nodes.append(node)
-        doc_index = GPTVectorStoreIndex(nodes, service_context=service_context)
+
+        doc_index = GPTVectorStoreIndex(
+            nodes, service_context=service_context,
+            storage_context=storage_context
+        )
     else:
         documents = SimpleDirectoryReader(
             directory_path, file_extractor=CUSTOM_FILE_READER_CLS
         ).load_data()
 
         doc_index = GPTVectorStoreIndex.from_documents(
-            documents, service_context=service_context
+            documents, service_context=service_context,
+            storage_context=storage_context
         )
 
     dirname = os.path.dirname(directory_path)
@@ -247,11 +286,12 @@ def index(directory_path, llm_type, mode):
 
 
 @chatbot.command(help="Query index.")
-@click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
+@click.option('--index-path', '-d', required=True, help="The directory which saved the documents.")
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
-def query(directory_path, llm_type):
-    if os.path.exists(directory_path):
-        iface = gr.Interface(fn=launch_chatbot(directory_path, llm_type=llm_type),
+def query(index_path, llm_type, index_type):
+    if os.path.exists(index_path):
+        iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type, llm_type=llm_type),
                              inputs=gr.inputs.Textbox(lines=7,
                                                       label="Enter your text"),
                              outputs="text",
