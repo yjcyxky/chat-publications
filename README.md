@@ -1,9 +1,25 @@
 # Chat Publications
-Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data. This repository will show you how to do it.
+Answer research questions based on publications from PubMed.
 
-If you want to know more details about LLM and LLAMA index, please access [more resources](./resources.md)
+## Introduction
 
-If you want to download all metadata of publications from PubMed, please access [here](./pubmed/README.md)
+You may have so many research questions about specific topics, such as:
+- What's the Long Covid? 
+- Any papers mentioned relationships between TP53 gene and lung cancer?
+- More questions ...
+
+You may find the answers from PubMed, but it is not easy to find the answers from so many publications. By using the state-of-the-art language models (LLM), such as [Vicuna](https://vicuna.lmsys.org/) and [ChatGPT](https://chat.openai.com/), you can get the answers from publications easily.
+
+But how to connect the LLM's (like Vicuna, ChatGPT) with publications from pubmed? This project provides a solution to connect the LLM's with publications from pubmed. It's based on LLM (Vicuna or ChatGPT), [LLAMA index](https://github.com/jerryjliu/llama_index), 
+[LangChain](https://github.com/hwchase17/langchain), [FastChat](https://github.com/lm-sys/FastChat) etc.
+
+- Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data (such as publications from pubmed). You can follow the steps below to build your own chatbot server.
+
+- If you want to know more details about LLM and LLAMA index, please access [more resources](./resources.md)
+
+## Download all publication data (not full text, just title, abstract, authors, etc.) from PubMed
+
+Please access [here](./pubmed/README.md) for more details.
 
 ## How to run vicuna with llama-index?
 
@@ -165,9 +181,6 @@ python chatbot.py index -d docs/my-project
 1. What's the Long Covid? which papers mentioned it? Could you list all doi numbers of these papers?
 
 ```
-# Dolly
-The Long Covid was first mentioned in paper no. 2021, which is titled Incidence, co-occurrence, and evolution of long-COVID features: a 6-month retrospective cohort study of 273,618 survivors of COVID-19. The Long Covid is defined as the symptoms lasting more than 6 months after infection with COVID-19. The papers no. 2021, 2022, 2023, 2024, and 2025 mention the Long Covid and have the doi numbers 10.1007/s10654-022-00847-8, 2015–2016,  J. Am. Med. Assoc.  325, 2015–2016,  and Eur. J. Epidemiol.  https://doi.org/10.1007/s10654-022-00847-8, respectively.
-
 # Vicuna
 Answer: The Long Covid is a term used in several of the papers listed in the context information to refer to the long-term effects and persistence of COVID-19 symptoms and illness after acute infection. The papers that mention the Long Covid are:
 
