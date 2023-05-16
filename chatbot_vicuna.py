@@ -15,7 +15,12 @@ from llama_index import StorageContext, load_index_from_storage
 from llama_index.response.pprint_utils import pprint_response
 from llama_index.langchain_helpers.text_splitter import TokenTextSplitter
 from llama_index.node_parser.simple import SimpleNodeParser
+
+# For postprocessing
 from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
+from llama_index.data_structs.node import NodeWithScore
+from llama_index.indices.postprocessor.types import BaseNodePostprocessor
+from llama_index.indices.query.schema import QueryBundle
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
 OPENAI_API_BASE = "http://localhost:8000/v1"
@@ -26,7 +31,7 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 
 # define prompt helper
 # set maximum input size
-max_input_size = 2048
+max_input_size = 1500
 # set number of output tokens
 num_output = 512
 # set maximum chunk overlap
@@ -45,6 +50,25 @@ CUSTOM_FILE_READER_CLS = {
     **DEFAULT_FILE_EXTRACTOR,
     "tsv": CustomPandasCSVParser
 }
+
+
+class FilterNodes(BaseNodePostprocessor):
+    def __init__(
+        self,
+        similarity: int = 0.8
+    ):
+        self.similarity = similarity
+
+    def postprocess_nodes(
+        self,
+        nodes: List[NodeWithScore],
+        query_bundle: Optional[QueryBundle] = None,
+    ) -> List[NodeWithScore]:
+        new_nodes = []
+        for node in nodes:
+            if node.score >= self.similarity:
+                new_nodes.append(node)
+        return new_nodes
 
 
 class CustomHttpLLM(LLM):
@@ -132,19 +156,31 @@ def launch_chatbot(persist_dir, llm_type="custom"):
     # rebuild storage context
     storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     # load index
-    index = load_index_from_storage(storage_context, service_context=service_context)
+    index = load_index_from_storage(
+        storage_context,
+        service_context=service_context
+    )
+
+    # add postprocessor
+    # Remove nodes with similarity < 0.9
+    filter_nodes_with_similarity = FilterNodes(similarity=0.9)
+
     api_key = os.environ["COHERE_API_KEY"]
     if api_key:
         print("Using CohereRerank...")
         cohere_rerank = CohereRerank(api_key=api_key, top_n=2)
-        index = index.as_query_engine(similarity_top_k=10, node_postprocessors=[cohere_rerank])
+        index = index.as_query_engine(similarity_top_k=10,
+                                      node_postprocessors=[cohere_rerank, filter_nodes_with_similarity])
     else:
         print("Using default results...")
-        index = index.as_query_engine(similarity_top_k=2)
+        index = index.as_query_engine(similarity_top_k=2,
+                                      node_postprocessors=[filter_nodes_with_similarity])
 
     def chatbot(input_text):
         print("Input: %s" % input_text)
         response = index.query(input_text)
+        if response.response is None:
+            return "Don't know the answer (cannot find the related context information from the knowledge base.)"
         pprint_response(response)
         return response.response.strip()
 
