@@ -12,3 +12,7 @@ The handy model overview table in [the documentation](https://www.sbert.net/docs
 More details on:
 1. https://www.sbert.net/examples/applications/semantic-search/README.html
 2. https://rom1504.medium.com/semantic-search-with-embeddings-index-anything-8fb18556443c
+
+### What's the reranking and why we need it?
+
+1. https://vectara.com/what-is-reranking-and-why-does-it-matter/

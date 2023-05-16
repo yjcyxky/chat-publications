@@ -135,3 +135,4 @@ wavedrom==2.0.3.post3
 wcwidth==0.2.6
 websockets==11.0.2
 yarl==1.9.2
+cohere==4.4.1

@@ -1,9 +1,10 @@
-from llama_index.readers.file.base_parser import BaseParser
 import openai
 import os
 import re
 import click
 import gradio as gr
+
+from typing import Callable, Dict, Optional, List, Mapping, Any
 
 from langchain.llms.base import LLM
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
@@ -11,9 +12,10 @@ from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, LLMPredictor
 from llama_index.readers.file.tabular_parser import PandasCSVParser
 from llama_index.readers.file.base import DEFAULT_FILE_EXTRACTOR
 from llama_index import StorageContext, load_index_from_storage
+from llama_index.response.pprint_utils import pprint_response
 from llama_index.langchain_helpers.text_splitter import TokenTextSplitter
 from llama_index.node_parser.simple import SimpleNodeParser
-from typing import Callable, Dict, Optional, List, Mapping, Any
+from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
 OPENAI_API_BASE = "http://localhost:8000/v1"
@@ -24,7 +26,7 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 
 # define prompt helper
 # set maximum input size
-max_input_size = 3096
+max_input_size = 2048
 # set number of output tokens
 num_output = 512
 # set maximum chunk overlap
@@ -64,7 +66,7 @@ class CustomHttpLLM(LLM):
         return re.sub(clean, '', text)
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        print(prompt, type(prompt))
+        print(f"{prompt}, {type(prompt)}")
         res = self.model_pipeline(str(prompt))
         try:
             return res
@@ -130,13 +132,20 @@ def launch_chatbot(persist_dir, llm_type="custom"):
     # rebuild storage context
     storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     # load index
-    index = load_index_from_storage(
-        storage_context, service_context=service_context).as_query_engine()
+    index = load_index_from_storage(storage_context, service_context=service_context)
+    api_key = os.environ["COHERE_API_KEY"]
+    if api_key:
+        print("Using CohereRerank...")
+        cohere_rerank = CohereRerank(api_key=api_key, top_n=2)
+        index = index.as_query_engine(similarity_top_k=10, node_postprocessors=[cohere_rerank])
+    else:
+        print("Using default results...")
+        index = index.as_query_engine(similarity_top_k=2)
 
     def chatbot(input_text):
         print("Input: %s" % input_text)
         response = index.query(input_text)
-        print("Response: %s" % response)
+        pprint_response(response)
         return response.response.strip()
 
     return chatbot
