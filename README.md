@@ -13,7 +13,7 @@ You may find the answers from PubMed, but it is not easy to find the answers fro
 But how to connect the LLM's (like Vicuna, ChatGPT) with publications from pubmed? This project provides a solution to connect the LLM's with publications from pubmed. It's based on LLM (Vicuna or ChatGPT), [LLAMA index](https://github.com/jerryjliu/llama_index), 
 [LangChain](https://github.com/hwchase17/langchain), [FastChat](https://github.com/lm-sys/FastChat) etc.
 
-- Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data (such as publications from pubmed). You can follow the steps below to build your own chatbot server.
+- Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data (such as publications from pubmed). You also can follow the [python script](https://github.com/yjcyxky/chat-publications/blob/main/chatbot_vicuna.py) as an example to build your own chatbot server.
 
 - If you want to know more details about LLM and LLAMA index, please access [more resources](./resources.md)
 
