@@ -8,7 +8,7 @@ You may have so many research questions about specific topics, such as:
 - Any papers mentioned relationships between TP53 gene and lung cancer?
 - More questions ...
 
-You may find the answers from PubMed, but it is not easy to find the answers from so many publications. By using the state-of-the-art language models (LLM), such as [Vicuna](https://vicuna.lmsys.org/) and [ChatGPT](https://chat.openai.com/), you can get the answers from publications easily.
+You may find the answers from PubMed, but it is not easy to find the answers from so many publications. By using the state-of-the-art language models (LLM), such as [Vicuna](https://vicuna.lmsys.org/) and [ChatGPT](https://chat.openai.com/), you can get the answers from publications easier.
 
 But how to connect the LLM's (like Vicuna, ChatGPT) with publications from pubmed? This project provides a solution to connect the LLM's with publications from pubmed. It's based on LLM (Vicuna or ChatGPT), [LLAMA index](https://github.com/jerryjliu/llama_index), 
 [LangChain](https://github.com/hwchase17/langchain), [FastChat](https://github.com/lm-sys/FastChat) etc.
