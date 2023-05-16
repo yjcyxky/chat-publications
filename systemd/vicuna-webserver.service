@@ -1,0 +1,14 @@
+[Unit]
+Description=Vicuna Web Service
+Requires=vicuna-worker.service
+
+[Service]
+Type=simple
+User=root
+Environment="PATH=/data/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 -m fastchat.serve.gradio_web_server
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

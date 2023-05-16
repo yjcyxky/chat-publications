@@ -21,13 +21,14 @@ OPENAI_API_BASE = "http://localhost:8000/v1"
 os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
+
 # define prompt helper
 # set maximum input size
-max_input_size = 2048
+max_input_size = 3096
 # set number of output tokens
 num_output = 512
 # set maximum chunk overlap
-max_chunk_overlap = 20
+max_chunk_overlap = 0
 
 
 class CustomPandasCSVParser(PandasCSVParser):
@@ -169,20 +170,35 @@ def get_service_context(llm_type="custom"):
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
-def index(directory_path, llm_type):
+@click.option('--mode', '-m', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
+def index(directory_path, llm_type, mode):
     service_context = get_service_context(llm_type)
-    documents = SimpleDirectoryReader(
-        directory_path, file_extractor=CUSTOM_FILE_READER_CLS
-    ).load_data()
+    if mode == "node":
+        import uuid
+        from llama_index.data_structs.node import Node
+        nodes = []
+        for file in os.listdir(directory_path):
+            # Treat each .txt file as a node, and the content of the file as the text of the node.
+            # So we can load the whole file as the context of query. It maybe a good idea when you want to
+            # search the answer from related single publicaion.
+            if file.endswith(".txt"):
+                uuid_str = str(uuid.uuid4())
+                with open(os.path.join(directory_path, file), "r") as f:
+                    text = f.read()
+                    node = Node(text=text, doc_id=uuid_str)
+                    nodes.append(node)
+        doc_index = GPTVectorStoreIndex(nodes, service_context=service_context)
+    else:
+        documents = SimpleDirectoryReader(
+            directory_path, file_extractor=CUSTOM_FILE_READER_CLS
+        ).load_data()
 
-    doc_index = GPTVectorStoreIndex.from_documents(
-        documents, service_context=service_context
-    )
+        doc_index = GPTVectorStoreIndex.from_documents(
+            documents, service_context=service_context
+        )
 
     dirname = os.path.dirname(directory_path)
     doc_index.storage_context.persist(persist_dir=dirname)
-
-    return index
 
 
 @chatbot.command(help="Query index.")

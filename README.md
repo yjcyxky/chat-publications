@@ -1,6 +1,8 @@
 # Chat Publications
 Do you want to connect your LLM's (like Vicuna, ChatGPT) with your own external data. This repository will show you how to do it.
 
+If you want to know more details about LLM and LLAMA index, please access [more resources](./resources.md)
+
 ## How to run vicuna with llama-index?
 
 ### Clone the current repository
