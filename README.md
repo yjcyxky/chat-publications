@@ -65,7 +65,31 @@ python3 -m fastchat.model.apply_delta \
     --delta-path lmsys/vicuna-13b-delta-v1.1
 ```
 
-### Launch all services by systemd
+### Build index for my own data
+
+CAUTION: It assumes that your data is in `${PWD}/data/my-project` directory.
+
+```
+# Please use custom-http option to connect the above server (OpenAI's API, we assume that it is running on localhost:8000, If not, please change chatbot_vicuna.py file)
+python3 chatbot_vicuna.py index -d data/my-project -l custom-http
+
+# If you changed your data, you need to rebuild the index
+```
+
+### Launch chatbot server
+
+After this step, you will get your own chatbot server at http://localhost:7860
+
+```
+# By systemd
+# You need to modify the chatbot.service file to change the `WorkingDirectory` and `data/my-project` based on your environment.
+systemctl start chatbot.service
+
+# Manually
+/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d data/my-project -l custom-http
+```
+
+### Launch all services by systemd for production
 
 #### Copy all files in systemd directory to /etc/systemd/system/ and start all services
 
@@ -93,7 +117,7 @@ systemctl start vicuna-openai.service
 python3 test_vicuna_openai_api.py
 ```
 
-### Launch all services step by step manually
+### Launch all services step by step manually for development
 #### Run fschat
 
 To serve using the web UI, you need three main components: web servers that interface with users, model workers that host one or more models, and a controller to coordinate the webserver and model workers. You can learn more about the architecture here.
@@ -129,29 +153,6 @@ By following these steps, you will be able to serve your models using the web UI
 
 ```
 python3 -m fastchat.serve.openai_api_server --host localhost --port 8000 http://localhost:21001
-```
-
-### Build index for my own data
-
-CAUTION: It assumes that your data is in `${PWD}/data/my-project` directory.
-
-```
-# Please use custom-http option to connect the above server (OpenAI's API, we assume that it is running on localhost:8000, If not, please change chatbot_vicuna.py file)
-python3 chatbot_vicuna.py index -d data/my-project -l custom-http
-
-# If you changed your data, you need to rebuild the index
-```
-
-### Launch chatbot server
-
-After this step, you will get your own chatbot server at http://localhost:7860
-
-```
-# By systemd
-systemctl start chatbot.service
-
-# Manually
-/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d data/my-project -l custom-http
 ```
 
 ### [Optional] Proxy chatbot server with nginx
