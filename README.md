@@ -133,11 +133,13 @@ python3 -m fastchat.serve.openai_api_server --host localhost --port 8000 http://
 
 ### Build index for my own data
 
-CAUTION: It assumes that your data is in `${PWD}/docs/my-project` directory.
+CAUTION: It assumes that your data is in `${PWD}/data/my-project` directory.
 
 ```
 # Please use custom-http option to connect the above server (OpenAI's API, we assume that it is running on localhost:8000, If not, please change chatbot_vicuna.py file)
-python3 chatbot_vicuna.py index -d docs/my-project -l custom-http
+python3 chatbot_vicuna.py index -d data/my-project -l custom-http
+
+# If you changed your data, you need to rebuild the index
 ```
 
 ### Launch chatbot server
@@ -149,7 +151,7 @@ After this step, you will get your own chatbot server at http://localhost:7860
 systemctl start chatbot.service
 
 # Manually
-/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d docs/my-project -l custom-http
+/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d data/my-project -l custom-http
 ```
 
 ### [Optional] Proxy chatbot server with nginx
@@ -162,18 +164,11 @@ cp nginx/chatbot.conf /etc/nginx/conf.d/
 systemctl restart nginx
 ```
 
-### Convert json to csv
-
-```
-apt-get install jq csvkit
-jq -r '.[] | @csv' input.json | csvformat -T > output.csv
-```
-
 ## How to run ChatGPT with llama-index?
 ### How to build index for my own data?
 
 ```
-python chatbot.py index -d docs/my-project
+python chatbot.py index -d data/my-project
 ```
 
 ### Examples
