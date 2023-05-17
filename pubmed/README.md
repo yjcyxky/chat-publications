@@ -51,7 +51,7 @@ We assume that all your data will be stored in `data` directory, and all outpute
 bash batch-convert.sh data data_json
 ```
 
-### Convert all json file to pubtext format
+### [Optional] Convert all json file to pubtext format
 
 Why pubtext format? Because we want the llama index can take the whole text of publications as input and treat it as a node.
 

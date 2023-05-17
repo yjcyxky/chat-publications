@@ -159,11 +159,11 @@ def get_qdrant_store(persist_dir):
     collection_name = "vicuna"
 
     # construct vector store
-    vector_store = QdrantVectorStore(
+    store = QdrantVectorStore(
         client=client,
         collection_name=collection_name,
     )
-    return vector_store
+    return store
 
 
 def launch_chatbot(persist_dir, index_type="default", llm_type="custom"):
@@ -172,11 +172,13 @@ def launch_chatbot(persist_dir, index_type="default", llm_type="custom"):
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
-        vector_store = get_qdrant_store(persist_dir)
+        store = get_qdrant_store(persist_dir)
         storage_context = StorageContext.from_defaults(
-            vector_store=vector_store
+            vector_store=store,
+            persist_dir=persist_dir
         )
-    # load index
+    
+    print("Loading index...")
     index = load_index_from_storage(
         storage_context,
         service_context=service_context
@@ -244,15 +246,20 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
-        vector_store = get_qdrant_store(persist_dir)
+        store = get_qdrant_store(persist_dir)
         storage_context = StorageContext.from_defaults(
-            vector_store=vector_store
+            vector_store=store
         )
     else:
         raise ValueError(f"Invalid index_type: {index_type}")
+    
+    def replace_all_chars(text, chars=['\n'], replacement=" "):
+        for char in chars:
+            text = text.replace(char, replacement)
+        return text
 
     if mode == "node":
-        import uuid
+        import uuid, json
         from llama_index.data_structs.node import Node
         nodes = []
         # TODO: When the number of documents is large, we should use a more efficient way to load the data.
@@ -260,29 +267,37 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
             # Treat each .txt file as a node, and the content of the file as the text of the node.
             # So we can load the whole file as the context of query. It maybe a good idea when you want to
             # search the answer from related single publicaion.
-            if file.endswith(".txt"):
-                uuid_str = str(uuid.uuid4())
+            if file.endswith(".json"):
+                print(f"Loading {file}")
                 with open(os.path.join(directory_path, file), "r") as f:
-                    text = f.read()
-                    node = Node(text=text, doc_id=uuid_str)
-                    nodes.append(node)
+                    data = json.load(f)
+                    for row in data:
+                        uuid_str = str(uuid.uuid4())
+                        keys = list(row.keys())
+                        content = [f"{key}: {replace_all_chars(str(row[key]))}" for key in keys]
+                        content = "\n".join(content)
+                        node = Node(text=content, doc_id=uuid_str)
+                        nodes.append(node)
 
+        print("Building index...")
         doc_index = GPTVectorStoreIndex(
             nodes, service_context=service_context,
             storage_context=storage_context
         )
     else:
+        print("Loading documents...")
         documents = SimpleDirectoryReader(
             directory_path, file_extractor=CUSTOM_FILE_READER_CLS
         ).load_data()
 
+        print("Building index...")
         doc_index = GPTVectorStoreIndex.from_documents(
             documents, service_context=service_context,
             storage_context=storage_context
         )
 
-    dirname = os.path.dirname(directory_path)
-    doc_index.storage_context.persist(persist_dir=dirname)
+    print("Persisting index...")
+    doc_index.storage_context.persist(persist_dir=persist_dir)
 
 
 @chatbot.command(help="Query index.")
