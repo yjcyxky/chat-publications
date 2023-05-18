@@ -1,30 +1,26 @@
-import openai
-import os
-import re
-import click
-import gradio as gr
-
-from typing import Callable, Dict, Optional, List, Mapping, Any
-
-from langchain.llms.base import LLM
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
-from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader, LLMPredictor, ServiceContext, LangchainEmbedding, PromptHelper
-from llama_index.readers.file.tabular_parser import PandasCSVParser
-from llama_index.readers.file.base import DEFAULT_FILE_EXTRACTOR
-from llama_index import StorageContext, load_index_from_storage
-from llama_index.response.pprint_utils import pprint_response
-from llama_index.langchain_helpers.text_splitter import TokenTextSplitter
-from llama_index.node_parser.simple import SimpleNodeParser
-
-# For postprocessing
+####################################################################################
+# Add lib to sys path
+import logging
 from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
-from llama_index.data_structs.node import NodeWithScore
-from llama_index.indices.postprocessor.types import BaseNodePostprocessor
-from llama_index.indices.query.schema import QueryBundle
+from llama_index.response.pprint_utils import pprint_response
+from llama_index import StorageContext
+from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader
+import gradio as gr
+import click
+from lib import (get_service_context, get_qdrant_store,
+                 get_custom_qa_prompt, FilterNodes,
+                 CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
+                 get_query_engine)
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
+####################################################################################
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
 OPENAI_API_BASE = "http://localhost:8000/v1"
-
 os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
@@ -36,175 +32,55 @@ max_input_size = 1500
 num_output = 512
 # set maximum chunk overlap
 max_chunk_overlap = 0
+# chunk size limit
+chunk_size_limit = 512
 
 
-class CustomPandasCSVParser(PandasCSVParser):
-    def __init__(self, *args: Any, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n", pandas_config: dict = ..., **kwargs: Any) -> None:
-        super().__init__(*args, concat_rows=concat_rows, col_joiner=col_joiner,
-                         row_joiner=row_joiner, pandas_config=pandas_config, **kwargs)
-
-        self._pandas_config = self._pandas_config.update({"delimiter": "\t"})
-
-
-CUSTOM_FILE_READER_CLS = {
-    **DEFAULT_FILE_EXTRACTOR,
-    "tsv": CustomPandasCSVParser
-}
-
-
-class FilterNodes(BaseNodePostprocessor):
-    def __init__(
-        self,
-        similarity: int = 0.8
-    ):
-        self.similarity = similarity
-
-    def postprocess_nodes(
-        self,
-        nodes: List[NodeWithScore],
-        query_bundle: Optional[QueryBundle] = None,
-    ) -> List[NodeWithScore]:
-        new_nodes = []
-        for node in nodes:
-            if node.score >= self.similarity:
-                new_nodes.append(node)
-        return new_nodes
-
-
-class CustomHttpLLM(LLM):
-    model_name = "vicuna-13b"
-
-    def model_pipeline(self, prompt: str) -> str:
-        completion = openai.ChatCompletion.create(
-            api_key=OPENAI_API_KEY,
-            api_base=OPENAI_API_BASE,
-            model=self.model_name,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return completion.choices[0].message.content
-
-    def remove_html_tags(self, text):
-        clean = re.compile('<.*?>')
-        return re.sub(clean, '', text)
-
-    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        print(f"{prompt}, {type(prompt)}")
-        res = self.model_pipeline(str(prompt))
-        try:
-            return res
-        except Exception as e:
-            print(e)
-            return "Don't know the answer"
-
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        return {"name_of_model": self.model_name}
-
-    @property
-    def _llm_type(self) -> str:
-        return "custom"
-
-
-class CustomLLM(LLM):
-    # model_name = "eachadea/vicuna-13b-1.1"
-    model_name = "lmsys/vicuna-7b-delta-v1.1"
-
-    def __init__(self):
-        import torch
-        from transformers import pipeline
-        if torch.backends.mps.is_available():
-            device = "mps"
-        elif torch.cuda.is_available():
-            device = "cuda"
-        else:
-            device = 'cpu'
-
-        device = torch.device(device)
-        print(f"Using device: {device}")
-
-        self.model_pipeline = pipeline("text-generation", model=self.model_name, device_map='auto',
-                                       trust_remote_code=True, model_kwargs={"torch_dtype": torch.bfloat16, "load_in_8bit": True},
-                                       max_length=max_input_size)
-
-    def remove_html_tags(self, text):
-        clean = re.compile('<.*?>')
-        return re.sub(clean, '', text)
-
-    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        print(prompt, type(prompt))
-        res = self.model_pipeline(str(prompt))
-        print(res, type(res))
-        if len(res) >= 1:
-            generated_text = res[0].get("generated_text")[len(prompt):]
-            return generated_text
-        else:
-            return "Don't know the answer"
-
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        return {"name_of_model": self.model_name}
-
-    @property
-    def _llm_type(self) -> str:
-        return "custom"
-    
-
-def get_qdrant_store(persist_dir):
-    import qdrant_client
-    from llama_index.vector_stores import QdrantVectorStore
-    # Creating a Qdrant vector store
-    client = qdrant_client.QdrantClient(path=persist_dir)
-    collection_name = "vicuna"
-
-    # construct vector store
-    store = QdrantVectorStore(
-        client=client,
-        collection_name=collection_name,
-    )
-    return store
-
-
-def launch_chatbot(persist_dir, index_type="default", llm_type="custom"):
-    service_context = get_service_context(llm_type)
-    # rebuild storage context
-    if index_type == "default":
-        storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
-    elif index_type == "qdrant":
-        store = get_qdrant_store(persist_dir)
-        storage_context = StorageContext.from_defaults(
-            vector_store=store,
-            persist_dir=persist_dir
-        )
-    
-    print("Loading index...")
-    index = load_index_from_storage(
-        storage_context,
-        service_context=service_context
+def get_service_context_by_llm_type(llm_type="custom"):
+    service_context = get_service_context(
+        llm_type, max_input_size=max_input_size, num_output=num_output,
+        max_chunk_overlap=max_chunk_overlap, chunk_size_limit=chunk_size_limit,
+        openai_api_key=OPENAI_API_KEY, openai_api_base=OPENAI_API_BASE
     )
 
+    return service_context
+
+
+def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9):
+    service_context = get_service_context_by_llm_type(llm_type)
+    print("Loading indexes...")
+    qa_prompt = get_custom_qa_prompt()
     # add postprocessor
     # Remove nodes with similarity < 0.9
-    filter_nodes_with_similarity = FilterNodes(similarity=0.9)
+    filter_nodes_with_similarity = FilterNodes(similarity=similarity)
 
     api_key = os.environ.get("COHERE_API_KEY")
     if api_key:
         print("Using CohereRerank...")
-        cohere_rerank = CohereRerank(api_key=api_key, top_n=2)
-        index = index.as_query_engine(similarity_top_k=10,
-                                      node_postprocessors=[cohere_rerank, filter_nodes_with_similarity])
+        cohere_rerank = CohereRerank(api_key=api_key, top_n=10)
+        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
+                                        service_context=service_context,
+                                        similarity_top_k=50,
+                                        node_postprocessors=[
+                                            cohere_rerank, filter_nodes_with_similarity
+                                        ],
+                                        text_qa_template=qa_prompt)
     else:
         print("Using default results...")
-        index = index.as_query_engine(similarity_top_k=2,
-                                      node_postprocessors=[filter_nodes_with_similarity])
+        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
+                                        service_context=service_context,
+                                        similarity_top_k=10,
+                                        node_postprocessors=[
+                                            filter_nodes_with_similarity
+                                        ],
+                                        text_qa_template=qa_prompt)
 
     def chatbot(input_text):
         print("Input: %s" % input_text)
-        response = index.query(input_text)
+        response = query_engine.query(input_text)
+        pprint_response(response)
         if response.response is None:
             return "Don't know the answer (cannot find the related context information from the knowledge base.)"
-        pprint_response(response)
         return response.response.strip()
 
     return chatbot
@@ -215,26 +91,6 @@ def chatbot():
     pass
 
 
-def get_service_context(llm_type="custom"):
-    if llm_type == "custom":
-        llm_predictor = LLMPredictor(llm=CustomLLM())
-    elif llm_type == "custom-http":
-        llm_predictor = LLMPredictor(llm=CustomHttpLLM())
-    else:
-        raise ValueError(f"Invalid llm_type: {llm_type}")
-
-    embed_model = LangchainEmbedding(HuggingFaceEmbeddings())
-
-    node_parser = SimpleNodeParser(text_splitter=TokenTextSplitter(
-        chunk_size=512, chunk_overlap=max_chunk_overlap))
-    prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
-    service_context = ServiceContext.from_defaults(
-        llm_predictor=llm_predictor, embed_model=embed_model,
-        prompt_helper=prompt_helper, node_parser=node_parser, chunk_size_limit=512
-    )
-    return service_context
-
-
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
@@ -242,7 +98,7 @@ def get_service_context(llm_type="custom"):
 @click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
 @click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
 def index(directory_path, llm_type, mode, index_type, persist_dir):
-    service_context = get_service_context(llm_type)
+    service_context = get_service_context_by_llm_type(llm_type)
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
@@ -252,16 +108,22 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
         )
     else:
         raise ValueError(f"Invalid index_type: {index_type}")
-    
+
     def replace_all_chars(text, chars=['\n'], replacement=" "):
         for char in chars:
             text = text.replace(char, replacement)
         return text
 
+    # We need to build three types of node:
+    # - by title + abstract + pmid [Vector Store Index]
+    # - by keywords + title + abstract + pmid [Keyword Table]
+    # - by title + review full text [Tree Index]
     if mode == "node":
-        import uuid, json
+        import uuid
+        import json
         from llama_index.data_structs.node import Node
         nodes = []
+        keywords_lst = []
         # TODO: When the number of documents is large, we should use a more efficient way to load the data.
         for file in os.listdir(directory_path):
             # Treat each .txt file as a node, and the content of the file as the text of the node.
@@ -274,9 +136,22 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
                     for row in data:
                         uuid_str = str(uuid.uuid4())
                         keys = list(row.keys())
-                        content = [f"{key}: {replace_all_chars(str(row[key]))}" for key in keys]
+                        keywords = row["keywords"].split(";")
+                        keywords_lst.append(
+                            [keyword.strip() for keyword in keywords]
+                        )
+                        content = [
+                            f"{key}: {replace_all_chars(str(row[key]))}" for key in keys
+                            if key in ["title", "abstract", "keywords", "journal", "pubdate",
+                                       "pmid", "doi", "country"]]
+                        extra_info = {
+                            key: row[key]
+                            for key in keys if key in ["pmid", "doi", "country", "journal"]
+                        }
+
                         content = "\n".join(content)
-                        node = Node(text=content, doc_id=uuid_str)
+                        node = Node(text=content, doc_id=uuid_str,
+                                    extra_info=extra_info)
                         nodes.append(node)
 
         print("Building index...")
@@ -284,6 +159,15 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
             nodes, service_context=service_context,
             storage_context=storage_context
         )
+        doc_index.set_index_id("doc_vector_index")
+
+        keyword_index = CustomKeywordTableIndex(
+            nodes,
+            keywords=keywords_lst,
+            service_context=service_context,
+            storage_context=storage_context
+        )
+        keyword_index.set_index_id("keyword_table_index")
     else:
         print("Loading documents...")
         documents = SimpleDirectoryReader(
@@ -295,24 +179,32 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
             documents, service_context=service_context,
             storage_context=storage_context
         )
+        doc_index.set_index_id("doc_vector_index")
+        keyword_index = None
 
     print("Persisting index...")
     doc_index.storage_context.persist(persist_dir=persist_dir)
+
+    if mode == "node" and keyword_index is not None:
+        keyword_index.storage_context.persist(persist_dir=persist_dir)
 
 
 @chatbot.command(help="Query index.")
 @click.option('--index-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
-def query(index_path, llm_type, index_type):
+@click.option('--similarity', '-s', default=0.5, help="The similarity threshold.", type=float)
+@click.option('--port', '-p', default=7860, help="The port of the server.", type=int)
+def query(index_path, llm_type, index_type, similarity, port):
     if os.path.exists(index_path):
-        iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type, llm_type=llm_type),
+        iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type,
+                                               llm_type=llm_type, similarity=similarity),
                              inputs=gr.inputs.Textbox(lines=7,
                                                       label="Enter your text"),
                              outputs="text",
                              title="Custom-trained AI Chatbot")
 
-        iface.queue().launch(debug=True, share=True, inline=False)
+        iface.queue().launch(debug=True, share=False, inline=False, server_port=port)
     else:
         print("Index file not found.")
         return

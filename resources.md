@@ -17,3 +17,7 @@ More details on:
 - https://vectara.com/what-is-reranking-and-why-does-it-matter/
 
 ### Performance and Benchmarking
+
+### Why define vector index and keyword table index over the same publications?
+
+https://gpt-index.readthedocs.io/en/latest/examples/query_engine/CustomRetrievers.html#define-vector-index-and-keyword-table-index-over-same-data
