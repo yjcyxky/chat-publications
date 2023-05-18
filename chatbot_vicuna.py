@@ -16,7 +16,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
 ####################################################################################
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
@@ -46,7 +46,8 @@ def get_service_context_by_llm_type(llm_type="custom"):
     return service_context
 
 
-def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9):
+def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9, 
+                   index_id=None, similarity_top_k=5):
     service_context = get_service_context_by_llm_type(llm_type)
     print("Loading indexes...")
     qa_prompt = get_custom_qa_prompt()
@@ -57,23 +58,25 @@ def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similar
     api_key = os.environ.get("COHERE_API_KEY")
     if api_key:
         print("Using CohereRerank...")
-        cohere_rerank = CohereRerank(api_key=api_key, top_n=10)
+        cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
         query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
-                                        service_context=service_context,
-                                        similarity_top_k=50,
+                                        service_context=service_context * 1.5,
+                                        similarity_top_k=similarity_top_k,
                                         node_postprocessors=[
                                             cohere_rerank, filter_nodes_with_similarity
                                         ],
-                                        text_qa_template=qa_prompt)
+                                        text_qa_template=qa_prompt,
+                                        index_id=index_id)
     else:
         print("Using default results...")
         query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
                                         service_context=service_context,
-                                        similarity_top_k=10,
+                                        similarity_top_k=similarity_top_k,
                                         node_postprocessors=[
                                             filter_nodes_with_similarity
                                         ],
-                                        text_qa_template=qa_prompt)
+                                        text_qa_template=qa_prompt,
+                                        index_id=index_id)
 
     def chatbot(input_text):
         print("Input: %s" % input_text)
@@ -197,10 +200,13 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--similarity', '-s', default=0.5, help="The similarity threshold.", type=float)
 @click.option('--port', '-p', default=7860, help="The port of the server.", type=int)
-def query(index_path, llm_type, index_type, similarity, port):
+@click.option('--index-id', '-n', default=None, help="The index id.", type=click.Choice(["doc_vector_index", "keyword_table_index", None]))
+@click.option('--similarity-top-k', '-k', default=5, help="The number of similar documents.", type=int)
+def query(index_path, llm_type, index_type, similarity, port, index_id, similarity_top_k):
     if os.path.exists(index_path):
         iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type,
-                                               llm_type=llm_type, similarity=similarity),
+                                               llm_type=llm_type, similarity=similarity,
+                                               index_id=index_id, similarity_top_k=similarity_top_k),
                              inputs=gr.inputs.Textbox(lines=7,
                                                       label="Enter your text"),
                              outputs="text",

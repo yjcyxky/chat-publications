@@ -269,18 +269,30 @@ class CustomRetriever(BaseRetriever):
         return retrieve_nodes
 
 
-def get_comp_query_engine(vector_index, keyword_index, service_context=None, 
+def get_comp_query_engine(vector_index=None, keyword_index=None, service_context=None, 
                           mode="OR", similarity_top_k=10, node_postprocessors=None,
                           text_qa_template=None, **kwargs):
     from llama_index.query_engine.retriever_query_engine import RetrieverQueryEngine
 
+    vector_retriever = None
+    keyword_retriever = None
     # define custom retriever
-    vector_retriever = VectorIndexRetriever(
-        index=vector_index, similarity_top_k=similarity_top_k
-    )
+    if vector_index:
+        vector_retriever = VectorIndexRetriever(
+            index=vector_index, similarity_top_k=similarity_top_k
+        )
     
-    keyword_retriever = KeywordTableSimpleRetriever(index=keyword_index)
-    custom_retriever = CustomRetriever(vector_retriever, keyword_retriever, mode=mode)
+    if keyword_index:
+        keyword_retriever = KeywordTableSimpleRetriever(index=keyword_index)
+
+    if vector_retriever and keyword_retriever:
+        custom_retriever = CustomRetriever(vector_retriever, keyword_retriever, mode=mode)
+    elif vector_retriever:
+        custom_retriever = vector_retriever
+    elif keyword_retriever:
+        custom_retriever = keyword_retriever
+    else:
+        raise ValueError("Must provide at least one index.")
 
     # assemble query engine
     custom_query_engine = RetrieverQueryEngine.from_args(
@@ -294,7 +306,7 @@ def get_comp_query_engine(vector_index, keyword_index, service_context=None,
     return custom_query_engine
 
 
-def get_query_engine(persist_dir, index_type, service_context, **kwargs):
+def get_query_engine(persist_dir, index_type, service_context, index_id=None, **kwargs):
     # rebuild storage context
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
@@ -315,12 +327,28 @@ def get_query_engine(persist_dir, index_type, service_context, **kwargs):
         doc_vector_index = indices[0]
         query_engine = doc_vector_index.as_query_engine(**kwargs)
     else:
-        print("Using hybrid index")
         doc_vector_index, keyword_table_index = indices
-        query_engine = get_comp_query_engine(
-            doc_vector_index, keyword_table_index, 
-            service_context=service_context,
-            **kwargs
-        )
+        if index_id == 'doc_vector_index':
+            print("Using vector index only")
+            doc_vector_index = indices[0]
+            query_engine = get_comp_query_engine(
+                vector_index=doc_vector_index, keyword_index=None,
+                service_context=service_context,
+                **kwargs
+            )
+        elif index_id == 'keyword_table_index':
+            print("Using keyword table index only")
+            query_engine = get_comp_query_engine(
+                vector_index=None, keyword_index=keyword_table_index,
+                service_context=service_context,
+                **kwargs
+            )
+        else:
+            print("Using hybrid index")
+            query_engine = get_comp_query_engine(
+                vector_index=doc_vector_index, keyword_index=keyword_table_index, 
+                service_context=service_context,
+                **kwargs
+            )
 
     return query_engine
