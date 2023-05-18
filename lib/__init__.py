@@ -101,7 +101,7 @@ CUSTOM_FILE_READER_CLS = {
 class FilterNodes(BaseNodePostprocessor):
     def __init__(
         self,
-        similarity: int = 0.8
+        similarity: int = 0.8,
     ):
         self.similarity = similarity
 
@@ -119,6 +119,7 @@ class FilterNodes(BaseNodePostprocessor):
             # Maybe the score is None when KeywordTableIndex is used
             if node.score is None:
                 new_nodes.append(node)
+                
         return new_nodes
 
 
@@ -277,6 +278,7 @@ def get_comp_query_engine(vector_index, keyword_index, service_context=None,
     vector_retriever = VectorIndexRetriever(
         index=vector_index, similarity_top_k=similarity_top_k
     )
+    
     keyword_retriever = KeywordTableSimpleRetriever(index=keyword_index)
     custom_retriever = CustomRetriever(vector_retriever, keyword_retriever, mode=mode)
 

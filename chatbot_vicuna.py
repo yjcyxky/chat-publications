@@ -134,6 +134,9 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
                 with open(os.path.join(directory_path, file), "r") as f:
                     data = json.load(f)
                     for row in data:
+                        if not row["title"] or not row["abstract"]:
+                            continue
+
                         uuid_str = str(uuid.uuid4())
                         keys = list(row.keys())
                         keywords = row["keywords"].split(";")
@@ -142,11 +145,10 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
                         )
                         content = [
                             f"{key}: {replace_all_chars(str(row[key]))}" for key in keys
-                            if key in ["title", "abstract", "keywords", "journal", "pubdate",
-                                       "pmid", "doi", "country"]]
+                            if key in ["title", "abstract", "keywords"]]
                         extra_info = {
                             key: row[key]
-                            for key in keys if key in ["pmid", "doi", "country", "journal"]
+                            for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate"]
                         }
 
                         content = "\n".join(content)
