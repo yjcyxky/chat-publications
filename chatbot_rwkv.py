@@ -14,21 +14,19 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
 from lib import (get_qdrant_store, get_custom_qa_prompt, FilterNodes,
                  CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
                  get_query_engine)
-from lib.vicuna import get_service_context
+from lib.rwkv import get_service_context
 ####################################################################################
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
-OPENAI_API_KEY = "EMPTY"  # Not support yet
-OPENAI_API_BASE = "http://localhost:8000/v1"
 os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 
 # define prompt helper
 # set maximum input size
-max_input_size = 1500
+max_input_size = 5000
 # set number of output tokens
 num_output = 512
 # set maximum chunk overlap
@@ -37,19 +35,18 @@ max_chunk_overlap = 0
 chunk_size_limit = 512
 
 
-def get_service_context_by_llm_type(llm_type="custom"):
+def get_service_context_by_llm_type():
     service_context = get_service_context(
-        llm_type, max_input_size=max_input_size, num_output=num_output,
-        max_chunk_overlap=max_chunk_overlap, chunk_size_limit=chunk_size_limit,
-        openai_api_key=OPENAI_API_KEY, openai_api_base=OPENAI_API_BASE
+        max_input_size=max_input_size, num_output=num_output,
+        max_chunk_overlap=max_chunk_overlap, chunk_size_limit=chunk_size_limit
     )
 
     return service_context
 
 
-def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9, 
+def launch_chatbot(persist_dir, index_type="default", similarity=0.9, 
                    index_id=None, similarity_top_k=5):
-    service_context = get_service_context_by_llm_type(llm_type)
+    service_context = get_service_context_by_llm_type()
     print("Loading indexes...")
     qa_prompt = get_custom_qa_prompt()
     # add postprocessor
@@ -97,12 +94,11 @@ def chatbot():
 
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
-@click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--mode', '-m', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
 @click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
 @click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
-def index(directory_path, llm_type, mode, index_type, persist_dir):
-    service_context = get_service_context_by_llm_type(llm_type)
+def index(directory_path, mode, index_type, persist_dir):
+    service_context = get_service_context_by_llm_type()
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
@@ -198,15 +194,14 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
 @chatbot.command(help="Query index.")
 @click.option('--index-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
-@click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--similarity', '-s', default=0.5, help="The similarity threshold.", type=float)
 @click.option('--port', '-p', default=7860, help="The port of the server.", type=int)
 @click.option('--index-id', '-n', default=None, help="The index id.", type=click.Choice(["doc_vector_index", "keyword_table_index", None]))
 @click.option('--similarity-top-k', '-k', default=5, help="The number of similar documents.", type=int)
-def query(index_path, llm_type, index_type, similarity, port, index_id, similarity_top_k):
+def query(index_path, index_type, similarity, port, index_id, similarity_top_k):
     if os.path.exists(index_path):
         iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type,
-                                               llm_type=llm_type, similarity=similarity,
+                                               similarity=similarity,
                                                index_id=index_id, similarity_top_k=similarity_top_k),
                              inputs=gr.inputs.Textbox(lines=7,
                                                       label="Enter your text"),
