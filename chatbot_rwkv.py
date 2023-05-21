@@ -59,7 +59,7 @@ def launch_chatbot(persist_dir, index_type="default", similarity=0.9,
         cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
         query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
                                         service_context=service_context,
-                                        similarity_top_k=similarity_top_k,
+                                        similarity_top_k=similarity_top_k * 2,
                                         node_postprocessors=[
                                             cohere_rerank, filter_nodes_with_similarity
                                         ],

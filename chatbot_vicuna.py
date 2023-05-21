@@ -1,7 +1,5 @@
 ####################################################################################
 import logging
-from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
-from llama_index.response.pprint_utils import pprint_response
 from llama_index import StorageContext
 from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader
 import gradio as gr
@@ -11,9 +9,8 @@ import sys
 import os
 # Add lib to sys path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
-from lib import (get_qdrant_store, get_custom_qa_prompt, FilterNodes,
-                 CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
-                 get_query_engine)
+from lib import (get_qdrant_store, CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
+                 get_chatbot)
 from lib.vicuna import get_service_context
 ####################################################################################
 
@@ -28,9 +25,9 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 
 # define prompt helper
 # set maximum input size
-max_input_size = 1500
+max_input_size = 1800
 # set number of output tokens
-num_output = 512
+num_output = 248
 # set maximum chunk overlap
 max_chunk_overlap = 0
 # chunk size limit
@@ -50,44 +47,9 @@ def get_service_context_by_llm_type(llm_type="custom"):
 def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9, 
                    index_id=None, similarity_top_k=5):
     service_context = get_service_context_by_llm_type(llm_type)
-    print("Loading indexes...")
-    qa_prompt = get_custom_qa_prompt()
-    # add postprocessor
-    # Remove nodes with similarity < 0.9
-    filter_nodes_with_similarity = FilterNodes(similarity=similarity)
-
-    api_key = os.environ.get("COHERE_API_KEY")
-    if api_key:
-        print("Using CohereRerank...")
-        cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
-        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
-                                        service_context=service_context,
-                                        similarity_top_k=similarity_top_k,
-                                        node_postprocessors=[
-                                            cohere_rerank, filter_nodes_with_similarity
-                                        ],
-                                        text_qa_template=qa_prompt,
-                                        index_id=index_id)
-    else:
-        print("Using default results...")
-        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
-                                        service_context=service_context,
-                                        similarity_top_k=similarity_top_k,
-                                        node_postprocessors=[
-                                            filter_nodes_with_similarity
-                                        ],
-                                        text_qa_template=qa_prompt,
-                                        index_id=index_id)
-
-    def chatbot(input_text):
-        print("Input: %s" % input_text)
-        response = query_engine.query(input_text)
-        pprint_response(response)
-        if response.response is None:
-            return "Don't know the answer (cannot find the related context information from the knowledge base.)"
-        return response.response.strip()
-
-    return chatbot
+    return get_chatbot(persist_dir=persist_dir, service_context=service_context, index_type=index_type,
+                       similarity=similarity, index_id=index_id, similarity_top_k=similarity_top_k,
+                       collection_name="pubmed")
 
 
 @click.group()
@@ -106,7 +68,7 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
-        store = get_qdrant_store(persist_dir)
+        store = get_qdrant_store(persist_dir, collection_name="pubmed")
         storage_context = StorageContext.from_defaults(
             vector_store=store
         )
@@ -152,7 +114,7 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
                             if key in ["title", "abstract", "keywords"]]
                         extra_info = {
                             key: row[key]
-                            for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate"]
+                            for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate", "authors", "title"]
                         }
 
                         content = "\n".join(content)

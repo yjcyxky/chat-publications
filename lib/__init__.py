@@ -1,3 +1,4 @@
+import os
 from typing import Optional, List, Sequence, Set, Any
 
 from llama_index.indices.postprocessor.types import BaseNodePostprocessor
@@ -9,6 +10,8 @@ from llama_index.indices.keyword_table.utils import simple_extract_keywords
 from llama_index.prompts.prompts import KeywordExtractPrompt
 from llama_index.readers.file.tabular_parser import PandasCSVParser
 from llama_index.readers.file.base import DEFAULT_FILE_EXTRACTOR
+from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
+from llama_index.response.pprint_utils import pprint_response
 
 from llama_index.retrievers import BaseRetriever, VectorIndexRetriever, KeywordTableSimpleRetriever
 from llama_index import (QueryBundle, ServiceContext, StorageContext,
@@ -103,7 +106,7 @@ def get_custom_qa_prompt():
         "---------------------\n"
         "{context_str}"
         "\n---------------------\n"
-        "Given this information, please answer the question and list all related publications as references: {query_str}\n"
+        "Given this information, please answer the question: {query_str}\n"
     )
     QA_PROMPT = QuestionAnswerPrompt(QA_PROMPT_TMPL)
 
@@ -187,12 +190,13 @@ def get_comp_query_engine(vector_index=None, keyword_index=None, service_context
     return custom_query_engine
 
 
-def get_query_engine(persist_dir, index_type, service_context, index_id=None, **kwargs):
+def get_query_engine(persist_dir, index_type, service_context, index_id=None, 
+                     collection_name="pubmed", **kwargs):
     # rebuild storage context
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
-        store = get_qdrant_store(persist_dir)
+        store = get_qdrant_store(persist_dir, collection_name=collection_name)
         storage_context = StorageContext.from_defaults(
             vector_store=store,
             persist_dir=persist_dir
@@ -233,3 +237,55 @@ def get_query_engine(persist_dir, index_type, service_context, index_id=None, **
             )
 
     return query_engine
+
+def get_chatbot(similarity=0.8, similarity_top_k=10, persist_dir=os.getcwd(), index_type="default", 
+                service_context=None, index_id=None, collection_name="pubmed"):
+    print("Loading indexes...")
+    qa_prompt = get_custom_qa_prompt()
+    # add postprocessor
+    # Remove nodes with similarity < 0.9
+    filter_nodes_with_similarity = FilterNodes(similarity=similarity)
+
+    api_key = os.environ.get("COHERE_API_KEY")
+    if api_key:
+        print("Using CohereRerank...")
+        cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
+        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
+                                        service_context=service_context,
+                                        similarity_top_k=similarity_top_k,
+                                        node_postprocessors=[
+                                            cohere_rerank, filter_nodes_with_similarity
+                                        ],
+                                        text_qa_template=qa_prompt,
+                                        index_id=index_id,
+                                        collection_name=collection_name)
+    else:
+        print("Using default results...")
+        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
+                                        service_context=service_context,
+                                        similarity_top_k=similarity_top_k,
+                                        node_postprocessors=[
+                                            filter_nodes_with_similarity
+                                        ],
+                                        text_qa_template=qa_prompt,
+                                        index_id=index_id,
+                                        collection_name="pubmed")
+        
+    def remove_redundant_blank(text):
+        return " ".join(text.split())
+
+    def chatbot(input_text):
+        print("Input: %s" % input_text)
+        response = query_engine.query(input_text)
+        nodes_extra_info = [node.extra_info for node in response.source_nodes]
+        extra_info = [remove_redundant_blank(f'{index + 1}. {node.get("authors")} {node.get("title")}. {node.get("journal")}, \
+                        {node.get("country")} {node.get("pubdate")}. \
+                        [DOI: {node.get("doi")}] [PMID: {node.get("pmid")}]')
+                      for (index, node) in enumerate(nodes_extra_info)]
+        references = "\n".join(extra_info)
+        pprint_response(response)
+        if response.response is None:
+            return "Don't know the answer (cannot find the related context information from the knowledge base.)"
+        return f"""Answer: \n{response.response.strip()}\n\nReferences: \n{references}""".strip()
+
+    return chatbot
