@@ -1,6 +1,5 @@
 ####################################################################################
 import logging
-from llama_index import StorageContext
 from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader
 import gradio as gr
 import click
@@ -9,12 +8,12 @@ import sys
 import os
 # Add lib to sys path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
-from lib import (get_qdrant_store, CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
+from lib import (get_storage_context, CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
                  get_chatbot)
 from lib.vicuna import get_service_context
 ####################################################################################
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 OPENAI_API_KEY = "EMPTY"  # Not support yet
@@ -61,19 +60,14 @@ def chatbot():
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--mode', '-m', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
-@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
 @click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
 def index(directory_path, llm_type, mode, index_type, persist_dir):
     service_context = get_service_context_by_llm_type(llm_type)
-    if index_type == "default":
-        storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
-    elif index_type == "qdrant":
-        store = get_qdrant_store(persist_dir, collection_name="pubmed")
-        storage_context = StorageContext.from_defaults(
-            vector_store=store
-        )
-    else:
-        raise ValueError(f"Invalid index_type: {index_type}")
+    storage_context = get_storage_context(
+        persist_dir=persist_dir, index_type=index_type,
+        create_collection=True, collection_name="pubmed"
+    )
 
     def replace_all_chars(text, chars=['\n'], replacement=" "):
         for char in chars:
@@ -129,6 +123,13 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
         )
         doc_index.set_index_id("doc_vector_index")
 
+        # Keyword table index doen't support mongodb storage.
+        if index_type == "qdrant-prod":
+            storage_context = get_storage_context(        
+                persist_dir=persist_dir, index_type="qdrant",
+                create_collection=True, collection_name="pubmed"
+            )
+
         keyword_index = CustomKeywordTableIndex(
             nodes,
             keywords=keywords_lst,
@@ -150,16 +151,17 @@ def index(directory_path, llm_type, mode, index_type, persist_dir):
         doc_index.set_index_id("doc_vector_index")
         keyword_index = None
 
-    print("Persisting index...")
-    doc_index.storage_context.persist(persist_dir=persist_dir)
+    if index_type != "qdrant-prod":
+        print("Persisting index...")
+        doc_index.storage_context.persist(persist_dir=persist_dir)
 
-    if mode == "node" and keyword_index is not None:
-        keyword_index.storage_context.persist(persist_dir=persist_dir)
+        if mode == "node" and keyword_index is not None:
+            keyword_index.storage_context.persist(persist_dir=persist_dir)
 
 
 @chatbot.command(help="Query index.")
 @click.option('--index-path', '-d', required=True, help="The directory which saved the documents.")
-@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
 @click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
 @click.option('--similarity', '-s', default=0.5, help="The similarity threshold.", type=float)
 @click.option('--port', '-p', default=7860, help="The port of the server.", type=int)
@@ -175,7 +177,7 @@ def query(index_path, llm_type, index_type, similarity, port, index_id, similari
                              outputs="text",
                              title="Custom-trained AI Chatbot")
 
-        iface.queue().launch(debug=True, share=False, inline=False, server_port=port)
+        iface.queue(concurrency_count=3).launch(debug=True, share=False, inline=False, server_port=port)
     else:
         print("Index file not found.")
         return

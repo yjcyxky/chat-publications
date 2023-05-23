@@ -17,3 +17,17 @@ title: A logistic regression analysis of risk factors in ME/CFS pathogenesis.
 abstract: BACKGROUND Myalgic Encephalomyelitis/Chronic Fatigue Syndrome (ME/CFS) is a complex disease, whose exact cause remains unclear. A wide range of risk factors has been proposed that helps understanding potential disease pathogenesis. However, there is little consistency for many risk factor associations, thus we undertook an exploratory study of risk factors using data from the UK ME/CFS Biobank participants. We report on risk factor associations in ME/CFS compared with multiple sclerosis participants and healthy controls.   METHODS This was a cross-sectional study of 269 people with ME/CFS, including 214 with mild/moderate and 55 with severe symptoms, 74 people with multiple sclerosis (MS), and 134 healthy controls, who were recruited from primary and secondary health services. Data were collected from participants using a standardised written questionnaire. Data analyses consisted of univariate and multivariable regression analysis (by levels of proximity to disease onset).   RESULTS A history of frequent colds (OR = 8.26, P <= 0.001) and infections (OR = 25.5, P = 0.015) before onset were the strongest factors associated with a higher risk of ME/CFS compared to healthy controls. Being single (OR = 4.41, P <= 0.001), having lower income (OR = 3.71, P <= 0.001), and a family history
 ---------------------
 Given this information, please answer the question and extract title and pmid as references from the context information: what is the ME/CFS?
+
+
+### What's the Chronic Fatigue Syndrome?
+
+Environment: Vicuna + Cohere Rerank
+
+Answer: 
+```
+Chronic Fatigue Syndrome (CFS) is a debilitating chronic disease of unknown aetiology that is recognized by the World Health Organization (WHO) and the United States Center for Disease Control and Prevention (US CDC) as a disorder of the brain. The disease predominantly affects adults, with a peak age of onset of between 20 and 45 years, and has a female to male ratio of 3:1. The pathophysiological mechanisms of CFS are unclear, but studies suggest that the neuro-immuno-endocrinological pattern of CFS patients may be key to understanding the complexity of the disease. The diagnosis of CFS is of exclusion, meaning that other medical conditions must be ruled out. There are no specific pharmacological therapies to treat CFS, but various studies have aimed to benefit patients' prognosis, symptomatology relief, and the recovery of pre-existing function. The assessment of CFS mainly uses Fukuda's criteria and is based on the exclusion of symptoms related to other diseases/syndromes, subjective self-reporting, and outcomes of self-report questionnaires.
+
+References: 
+1. M Cortes Rivera;C Mastronardi;CT Silva-Aldana;M Arcos-Burgos;BA Lidbury Myalgic Encephalomyelitis/Chronic Fatigue Syndrome: A Comprehensive Review.. Diagnostics (Basel, Switzerland), Switzerland 2019-08-07. [DOI: 10.3390/diagnostics9030091] [PMID: 31394725]
+2. JB Eyskens;J Illegems;L De Nil;J Nijs;JK Kampen;G Moorkens Assessing chronic fatigue syndrome: Self-reported physical functioning and correlations with physical testing.. Journal of bodywork and movement therapies, United States 2019-07. [DOI: 10.1016/j.jbmt.2019.03.006] [PMID: 31563377]
+```

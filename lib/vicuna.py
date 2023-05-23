@@ -53,7 +53,8 @@ class CustomHttpLLM(LLM):
             model=self.model_name,
             messages=[
                 {"role": "user", "content": prompt}
-            ]
+            ],
+            temperature=0.2,
         )
         return completion.choices[0].message.content
 

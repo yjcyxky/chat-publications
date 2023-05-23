@@ -11,9 +11,8 @@ import sys
 import os
 # Add lib to sys path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
-from lib import (get_qdrant_store, get_custom_qa_prompt, FilterNodes,
-                 CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
-                 get_query_engine)
+from lib import (get_qdrant_store, get_chatbot,
+                 CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,)
 from lib.rwkv import get_service_context
 ####################################################################################
 
@@ -47,45 +46,9 @@ def get_service_context_by_llm_type():
 def launch_chatbot(persist_dir, index_type="default", similarity=0.9, 
                    index_id=None, similarity_top_k=5):
     service_context = get_service_context_by_llm_type()
-    print("Loading indexes...")
-    qa_prompt = get_custom_qa_prompt()
-    # add postprocessor
-    # Remove nodes with similarity < 0.9
-    filter_nodes_with_similarity = FilterNodes(similarity=similarity)
-
-    api_key = os.environ.get("COHERE_API_KEY")
-    if api_key:
-        print("Using CohereRerank...")
-        cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
-        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
-                                        service_context=service_context,
-                                        similarity_top_k=similarity_top_k * 2,
-                                        node_postprocessors=[
-                                            cohere_rerank, filter_nodes_with_similarity
-                                        ],
-                                        text_qa_template=qa_prompt,
-                                        index_id=index_id)
-    else:
-        print("Using default results...")
-        query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
-                                        service_context=service_context,
-                                        similarity_top_k=similarity_top_k,
-                                        node_postprocessors=[
-                                            filter_nodes_with_similarity
-                                        ],
-                                        text_qa_template=qa_prompt,
-                                        index_id=index_id)
-
-    def chatbot(input_text):
-        print("Input: %s" % input_text)
-        response = query_engine.query(input_text)
-        pprint_response(response)
-        if response.response is None:
-            return "Don't know the answer (cannot find the related context information from the knowledge base.)"
-        return response.response.strip()
-
-    return chatbot
-
+    return get_chatbot(persist_dir=persist_dir, service_context=service_context, index_type=index_type,
+                       similarity=similarity, index_id=index_id, similarity_top_k=similarity_top_k,
+                       collection_name="pubmed")
 
 @click.group()
 def chatbot():
@@ -95,7 +58,7 @@ def chatbot():
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
 @click.option('--mode', '-m', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
-@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
 @click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
 def index(directory_path, mode, index_type, persist_dir):
     service_context = get_service_context_by_llm_type()
@@ -103,6 +66,11 @@ def index(directory_path, mode, index_type, persist_dir):
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
         store = get_qdrant_store(persist_dir)
+        storage_context = StorageContext.from_defaults(
+            vector_store=store
+        )
+    elif index_type == "qdrant-prod":
+        store = get_qdrant_store()
         storage_context = StorageContext.from_defaults(
             vector_store=store
         )
@@ -193,7 +161,7 @@ def index(directory_path, mode, index_type, persist_dir):
 
 @chatbot.command(help="Query index.")
 @click.option('--index-path', '-d', required=True, help="The directory which saved the documents.")
-@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant"]))
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
 @click.option('--similarity', '-s', default=0.5, help="The similarity threshold.", type=float)
 @click.option('--port', '-p', default=7860, help="The port of the server.", type=int)
 @click.option('--index-id', '-n', default=None, help="The index id.", type=click.Choice(["doc_vector_index", "keyword_table_index", None]))

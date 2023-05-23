@@ -1,6 +1,8 @@
 import os
 from typing import Optional, List, Sequence, Set, Any
 
+from qdrant_client.models import Distance, VectorParams
+
 from llama_index.indices.postprocessor.types import BaseNodePostprocessor
 from llama_index.data_structs import Node, NodeWithScore
 from llama_index.data_structs.data_structs import KeywordTable
@@ -12,6 +14,8 @@ from llama_index.readers.file.tabular_parser import PandasCSVParser
 from llama_index.readers.file.base import DEFAULT_FILE_EXTRACTOR
 from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
 from llama_index.response.pprint_utils import pprint_response
+from llama_index.storage.docstore.mongo_docstore import MongoDocumentStore
+from llama_index.storage.index_store import MongoIndexStore
 
 from llama_index.retrievers import BaseRetriever, VectorIndexRetriever, KeywordTableSimpleRetriever
 from llama_index import (QueryBundle, ServiceContext, StorageContext,
@@ -86,11 +90,20 @@ CUSTOM_FILE_READER_CLS = {
 }
 
 
-def get_qdrant_store(persist_dir, collection_name="pubmed"):
+def get_qdrant_store(persist_dir=None, collection_name="pubmed", create_collection=False):
     import qdrant_client
     from llama_index.vector_stores import QdrantVectorStore
     # Creating a Qdrant vector store
-    client = qdrant_client.QdrantClient(path=persist_dir)
+    if persist_dir:
+        client = qdrant_client.QdrantClient(path=persist_dir)
+    else:
+        client = qdrant_client.QdrantClient(host="localhost", port=6333)
+
+        if create_collection:
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            )
 
     # construct vector store
     store = QdrantVectorStore(
@@ -124,6 +137,7 @@ class CustomRetriever(BaseRetriever):
     ) -> None:
         """Init params."""
 
+        print("Initializing custom retriever.")
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
         if mode not in ("AND", "OR"):
@@ -148,6 +162,7 @@ class CustomRetriever(BaseRetriever):
             retrieve_ids = vector_ids.union(keyword_ids)
 
         retrieve_nodes = [combined_dict[rid] for rid in retrieve_ids]
+        print(f"Retrieved {len(retrieve_nodes)} nodes.")
         return retrieve_nodes
 
 
@@ -160,16 +175,19 @@ def get_comp_query_engine(vector_index=None, keyword_index=None, service_context
     keyword_retriever = None
     # define custom retriever
     if vector_index:
+        print("Initializing custom retriever (vector).")
         vector_retriever = VectorIndexRetriever(
             index=vector_index, similarity_top_k=similarity_top_k
         )
     
     if keyword_index:
+        print("Initializing custom retriever (keyword).")
         keyword_retriever = KeywordTableSimpleRetriever(
             index=keyword_index, num_chunks_per_query=similarity_top_k
         )
 
     if vector_retriever and keyword_retriever:
+        print("Initializing custom retriever (vector + keyword).")
         custom_retriever = CustomRetriever(vector_retriever, keyword_retriever, mode=mode)
     elif vector_retriever:
         custom_retriever = vector_retriever
@@ -179,6 +197,7 @@ def get_comp_query_engine(vector_index=None, keyword_index=None, service_context
         raise ValueError("Must provide at least one index.")
 
     # assemble query engine
+    print("Assembling query engine.")
     custom_query_engine = RetrieverQueryEngine.from_args(
         service_context=service_context,
         retriever=custom_retriever,
@@ -190,17 +209,38 @@ def get_comp_query_engine(vector_index=None, keyword_index=None, service_context
     return custom_query_engine
 
 
-def get_query_engine(persist_dir, index_type, service_context, index_id=None, 
-                     collection_name="pubmed", **kwargs):
+def get_storage_context(persist_dir, index_type, collection_name="pubmed", create_collection=False):
     # rebuild storage context
     if index_type == "default":
         storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
     elif index_type == "qdrant":
-        store = get_qdrant_store(persist_dir, collection_name=collection_name)
+        store = get_qdrant_store(
+            persist_dir, collection_name=collection_name, 
+            create_collection=create_collection
+        )
         storage_context = StorageContext.from_defaults(
             vector_store=store,
             persist_dir=persist_dir
         )
+    elif index_type == "qdrant-prod":
+        mongodb_docstore = MongoDocumentStore.from_host_and_port(host="localhost", port=27017)
+        mongodb_index_store = MongoIndexStore.from_host_and_port(host="localhost", port=27017)
+        store = get_qdrant_store(collection_name=collection_name, create_collection=create_collection)
+        storage_context = StorageContext.from_defaults(
+            docstore=mongodb_docstore,
+            index_store=mongodb_index_store,
+            vector_store=store,
+            persist_dir=persist_dir
+        )
+    else:
+        raise ValueError(f"Invalid index_type: {index_type}")
+
+    return storage_context
+
+
+def get_query_engine(persist_dir, index_type, service_context, index_id=None, 
+                     collection_name="pubmed", **kwargs):
+    storage_context = get_storage_context(persist_dir, index_type, collection_name=collection_name)
 
     indices = load_indices_from_storage(
         storage_context,
@@ -252,7 +292,7 @@ def get_chatbot(similarity=0.8, similarity_top_k=10, persist_dir=os.getcwd(), in
         cohere_rerank = CohereRerank(api_key=api_key, top_n=similarity_top_k)
         query_engine = get_query_engine(persist_dir=persist_dir, index_type=index_type,
                                         service_context=service_context,
-                                        similarity_top_k=similarity_top_k,
+                                        similarity_top_k=similarity_top_k * 2,
                                         node_postprocessors=[
                                             cohere_rerank, filter_nodes_with_similarity
                                         ],
@@ -277,15 +317,15 @@ def get_chatbot(similarity=0.8, similarity_top_k=10, persist_dir=os.getcwd(), in
     def chatbot(input_text):
         print("Input: %s" % input_text)
         response = query_engine.query(input_text)
+        pprint_response(response)
         nodes_extra_info = [node.extra_info for node in response.source_nodes]
         extra_info = [remove_redundant_blank(f'{index + 1}. {node.get("authors")} {node.get("title")}. {node.get("journal")}, \
                         {node.get("country")} {node.get("pubdate")}. \
                         [DOI: {node.get("doi")}] [PMID: {node.get("pmid")}]')
                       for (index, node) in enumerate(nodes_extra_info)]
         references = "\n".join(extra_info)
-        pprint_response(response)
         if response.response is None:
             return "Don't know the answer (cannot find the related context information from the knowledge base.)"
-        return f"""Answer: \n{response.response.strip()}\n\nReferences: \n{references}""".strip()
+        return f"""{response.response.strip()}\n\nReferences: \n{references}""".strip()
 
     return chatbot

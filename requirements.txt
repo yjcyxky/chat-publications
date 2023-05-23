@@ -137,3 +137,4 @@ websockets==11.0.2
 yarl==1.9.2
 cohere==4.4.1
 qdrant_client==1.1.7
+pymongo
