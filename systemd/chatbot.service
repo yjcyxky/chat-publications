@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/data/chat-publications
-ExecStart=/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d data/my-project -l custom-http
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 chatbot_vicuna.py query -d data_20230522 -l custom-http --similarity-top-k 3 --index-type qdrant-prod --index-id doc_vector_index
 Restart=on-failure
 RestartSec=5s
 

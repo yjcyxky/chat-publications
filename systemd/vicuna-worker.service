@@ -6,7 +6,7 @@ Requires=vicuna-controller.service
 Type=simple
 User=root
 Environment="PATH=/data/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/data/miniconda3/envs/llama-index/bin/python3 -m fastchat.serve.model_worker --model-path /data/vicuna-13b
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 -m fastchat.serve.model_worker --model-path /data/chat-publications/models/vicuna-13b
 Restart=on-failure
 RestartSec=5s
 

@@ -24,9 +24,9 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
 
 # define prompt helper
 # set maximum input size
-max_input_size = 1800
+max_input_size = 1536
 # set number of output tokens
-num_output = 248
+num_output = 512
 # set maximum chunk overlap
 max_chunk_overlap = 0
 # chunk size limit
