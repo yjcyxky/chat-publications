@@ -1,0 +1,12 @@
+cohere==4.4.1
+qdrant_client==1.1.7
+pymongo
+rwkv
+ninja
+tokenizer
+langchain
+llama-index==0.6.7
+openai
+PyPDF2
+fschat
+sentence_transformers

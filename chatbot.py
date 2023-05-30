@@ -1,32 +1,55 @@
+####################################################################################
+import logging
+from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader
 import gradio as gr
 import click
-import json
+
+import sys
 import os
-from llama_index import SimpleDirectoryReader, ServiceContext, GPTVectorStoreIndex, LLMPredictor, PromptHelper, OpenAIEmbedding
-from llama_index import StorageContext, load_index_from_storage
-from langchain.chat_models import ChatOpenAI
+# Add lib to sys path
+sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
+from lib import (get_storage_context, CustomKeywordTableIndex, CUSTOM_FILE_READER_CLS,
+                 get_chatbot)
+from lib.model import get_service_context
+####################################################################################
 
-model_name = "text-davinci-003"
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
-def check_variable():
-    if os.environ.get("OPENAI_API_KEY") is None:
-        print("Please set the OPENAI_API_KEY environment variable.")
-        exit(1)
+OPENAI_API_KEY = "EMPTY"  # Not support yet
+OPENAI_API_BASE = "http://localhost:8000/v1"
+os.environ['HF_HOME'] = str(os.getcwd()) + '/huggingface'
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:512"
+
+# define prompt helper
+# set maximum input size
+max_input_size = 1536
+# set number of output tokens
+num_output = 512
+# set maximum chunk overlap
+max_chunk_overlap = 0
+# chunk size limit
+chunk_size_limit = 512
 
 
-def launch_chatbot(persist_dir):
-    # rebuild storage context
-    storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
-    # load index
-    index = load_index_from_storage(storage_context).as_query_engine()
+def get_service_context_by_llm_type(llm_type="custom", model_name="vicuna"):
+    service_context = get_service_context(
+        llm_type, max_input_size=max_input_size, num_output=num_output,
+        max_chunk_overlap=max_chunk_overlap, chunk_size_limit=chunk_size_limit,
+        openai_api_key=OPENAI_API_KEY, openai_api_base=OPENAI_API_BASE,
+        model_name=model_name
+    )
 
-    def chatbot(input_text):
-        print("Input: %s" % input_text)
-        response = index.query(input_text)
-        print("Response: %s" % response)
-        return response.response.strip()
+    return service_context
 
-    return chatbot
+
+def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similarity=0.9, 
+                   index_id=None, similarity_top_k=5, llm_model="vicuna"):
+    service_context = get_service_context_by_llm_type(llm_type, model_name=llm_model)
+    return get_chatbot(persist_dir=persist_dir, service_context=service_context, index_type=index_type,
+                       similarity=similarity, index_id=index_id, similarity_top_k=similarity_top_k,
+                       collection_name="pubmed")
 
 
 @click.group()
@@ -36,74 +59,122 @@ def chatbot():
 
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
-def index(directory_path):
-    check_variable()
-
-    max_input_size = 2048
-    num_outputs = 256
-    max_chunk_overlap = 20
-    chunk_size_limit = 600
-
-    prompt_helper = PromptHelper(
-        max_input_size, num_outputs, max_chunk_overlap,
-        chunk_size_limit=chunk_size_limit
+@click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
+@click.option('--mode', '-M', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
+@click.option('--llm-model', '-m', default="vicuna", help="The type of language model.", type=click.Choice(["vicuna", "rwkv"]))
+@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
+@click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
+def index(directory_path, llm_type, mode, llm_model, index_type, persist_dir):
+    service_context = get_service_context_by_llm_type(llm_type, model_name=llm_model)
+    storage_context = get_storage_context(
+        persist_dir=persist_dir, index_type=index_type,
+        create_collection=True, collection_name="pubmed"
     )
 
-    llm = ChatOpenAI(temperature=0.7, model_name=model_name,
-                     max_tokens=num_outputs)
-    llm_predictor = LLMPredictor(llm=llm)
-    embedding = OpenAIEmbedding()
+    def replace_all_chars(text, chars=['\n'], replacement=" "):
+        for char in chars:
+            text = text.replace(char, replacement)
+        return text
 
-    documents = SimpleDirectoryReader(directory_path).load_data()
+    # We need to build three types of node:
+    # - by title + abstract + pmid [Vector Store Index]
+    # - by keywords + title + abstract + pmid [Keyword Table]
+    # - by title + review full text [Tree Index]
+    if mode == "node":
+        import uuid
+        import json
+        from llama_index.data_structs.node import Node
+        nodes = []
+        keywords_lst = []
+        # TODO: When the number of documents is large, we should use a more efficient way to load the data.
+        for file in os.listdir(directory_path):
+            # Treat each .txt file as a node, and the content of the file as the text of the node.
+            # So we can load the whole file as the context of query. It maybe a good idea when you want to
+            # search the answer from related single publicaion.
+            if file.endswith(".json"):
+                print(f"Loading {file}")
+                with open(os.path.join(directory_path, file), "r") as f:
+                    data = json.load(f)
+                    for row in data:
+                        if not row["title"] or not row["abstract"]:
+                            continue
 
-    service_context = ServiceContext.from_defaults(
-        llm_predictor=llm_predictor,
-        embed_model=embedding,
-        prompt_helper=prompt_helper
-    )
-    doc_index = GPTVectorStoreIndex.from_documents(
-        documents,
-        service_context=service_context
-    )
-    doc_index = GPTVectorStoreIndex.from_documents(documents)
+                        uuid_str = str(uuid.uuid4())
+                        keys = list(row.keys())
+                        keywords = row["keywords"].split(";")
+                        keywords_lst.append(
+                            [keyword.strip() for keyword in keywords]
+                        )
+                        content = [
+                            f"{key}: {replace_all_chars(str(row[key]))}" for key in keys
+                            if key in ["title", "abstract", "keywords"]]
+                        extra_info = {
+                            key: row[key]
+                            for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate", "authors", "title"]
+                        }
 
-    doc_index.storage_context.persist(persist_dir=directory_path)
-    metadata = {
-        "max_input_size": max_input_size,
-        "num_outputs": num_outputs,
-        "max_chunk_overlap": max_chunk_overlap,
-        "chunk_size_limit": chunk_size_limit,
-        "directory_path": directory_path,
-        "index_type": "GPTVectorStoreIndex",
-        "model_name": "text-davinci-003",
-        "temperature": 0.7,
-        "max_tokens": num_outputs,
-        "num_documents": len(documents),
-        "document_names": [os.path.basename(file) for file in os.listdir(directory_path)]
-    }
+                        content = "\n".join(content)
+                        node = Node(text=content, doc_id=uuid_str,
+                                    extra_info=extra_info)
+                        nodes.append(node)
 
-    filename = os.path.basename(directory_path)
-    dirname = os.path.dirname(directory_path)
-    metadata_filepath = os.path.join(dirname, f'{filename}_metadata.json')
-    with open(metadata_filepath, 'w') as f:
-        json.dump(metadata, f)
+        print("Building index...")
+        doc_index = GPTVectorStoreIndex(
+            nodes, service_context=service_context,
+            storage_context=storage_context
+        )
+        doc_index.set_index_id("doc_vector_index")
 
-    return index
+        keyword_index = CustomKeywordTableIndex(
+            nodes,
+            keywords=keywords_lst,
+            service_context=service_context,
+            storage_context=storage_context
+        )
+        keyword_index.set_index_id("keyword_table_index")
+    else:
+        print("Loading documents...")
+        documents = SimpleDirectoryReader(
+            directory_path, file_extractor=CUSTOM_FILE_READER_CLS
+        ).load_data()
+
+        print("Building index...")
+        doc_index = GPTVectorStoreIndex.from_documents(
+            documents, service_context=service_context,
+            storage_context=storage_context
+        )
+        doc_index.set_index_id("doc_vector_index")
+        keyword_index = None
+
+    if index_type != "qdrant-prod":
+        print("Persisting index...")
+        doc_index.storage_context.persist(persist_dir=persist_dir)
+
+        if mode == "node" and keyword_index is not None:
+            keyword_index.storage_context.persist(persist_dir=persist_dir)
 
 
 @chatbot.command(help="Query index.")
-@click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
-def query(directory_path):
-    check_variable()
-
-    if os.path.exists(directory_path):
-        iface = gr.Interface(fn=launch_chatbot(directory_path),
+@click.option('--index-path', '-d', required=True, help="The directory which saved the indecies.")
+@click.option('--index-type', '-i', default="default", help="The type of index. default is file mode", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
+@click.option('--llm-type', '-l', default="custom-http", help="The type of language model, default is custom-http.", type=click.Choice(["custom", "custom-http"]))
+@click.option('--llm-model', '-m', default="vicuna", help="The type of language model. default is vicuna.", type=click.Choice(["vicuna", "rwkv"]))
+@click.option('--similarity', '-s', default=0.5, help="The similarity threshold. default is 0.5.", type=float)
+@click.option('--port', '-p', default=7860, help="The port of the server. default is 7860.", type=int)
+@click.option('--index-id', '-n', default="all", help="The index id. default is all", type=click.Choice(["doc_vector_index", "keyword_table_index", "all"]))
+@click.option('--similarity-top-k', '-k', default=5, help="The number of similar documents. default is 5.", type=int)
+def query(index_path, llm_type, index_type, llm_model, similarity, port, index_id, similarity_top_k):
+    if os.path.exists(index_path):
+        iface = gr.Interface(fn=launch_chatbot(index_path, index_type=index_type,
+                                               llm_type=llm_type, similarity=similarity,
+                                               index_id=index_id, similarity_top_k=similarity_top_k,
+                                               llm_model=llm_model),
                              inputs=gr.inputs.Textbox(lines=7,
                                                       label="Enter your text"),
                              outputs="text",
                              title="Custom-trained AI Chatbot")
 
-        iface.launch(share=False)
+        iface.queue(concurrency_count=3).launch(debug=True, share=False, inline=False, server_port=port)
     else:
         print("Index file not found.")
         return

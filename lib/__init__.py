@@ -100,10 +100,13 @@ def get_qdrant_store(persist_dir=None, collection_name="pubmed", create_collecti
         client = qdrant_client.QdrantClient(host="localhost", port=6333)
 
         if create_collection:
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
-            )
+            try:
+                client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                )
+            except Exception as e:
+                print("Collection already exists, so skip creating collection.")
 
     # construct vector store
     store = QdrantVectorStore(

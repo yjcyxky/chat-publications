@@ -1,0 +1,14 @@
+[Unit]
+Description=ChatBot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/chat-publications
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 chatbot.py query -d data_20230522 -l custom-http --similarity-top-k 3 --index-type qdrant-prod --index-id doc_vector_index
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

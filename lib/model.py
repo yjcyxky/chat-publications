@@ -15,17 +15,23 @@ from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 def get_service_context(llm_type="custom", max_chunk_overlap=0.5,
                         max_input_size=1500, num_output=512,
                         chunk_size_limit=512, openai_api_key=None,
-                        openai_api_base=None) -> ServiceContext:
+                        openai_api_base=None, model_name="vicuna") -> ServiceContext:
     os.environ["OPENAI_API_KEY"] = openai_api_key
     os.environ["OPENAI_API_BASE"] = openai_api_base
     os.environ["MAX_INPUT_SIZE"] = str(max_input_size)
     print(f"Setting up service context with llm_type: {llm_type}")
     if llm_type == "custom":
+        log.warning("Using custom LLM. This is vicuna-13b-1.1")
         llm_predictor = LLMPredictor(
             llm=CustomLLM()
         )
     elif llm_type == "custom-http":
-        llm_predictor = LLMPredictor(llm=CustomHttpLLM())
+        if model_name == "vicuna":
+            llm_predictor = LLMPredictor(llm=CustomVicunaHttpLLM())
+        elif model_name == "rwkv":
+            llm_predictor = LLMPredictor(llm=CustomRwkvHttpLLM())
+        else:
+            raise ValueError(f"Invalid model_name: {model_name}")
     else:
         raise ValueError(f"Invalid llm_type: {llm_type}")
 
@@ -43,8 +49,45 @@ def get_service_context(llm_type="custom", max_chunk_overlap=0.5,
     return service_context
 
 
-class CustomHttpLLM(LLM):
+class CustomVicunaHttpLLM(LLM):
     model_name = "vicuna-13b"
+
+    def model_pipeline(self, prompt: str) -> str:
+        completion = openai.ChatCompletion.create(
+            api_key=os.environ["OPENAI_API_KEY"],
+            api_base=os.environ["OPENAI_API_BASE"],
+            model=self.model_name,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
+        return completion.choices[0].message.content
+
+    def remove_html_tags(self, text):
+        clean = re.compile('<.*?>')
+        return re.sub(clean, '', text)
+
+    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+        print(f"{prompt}, {type(prompt)}")
+        res = self.model_pipeline(str(prompt))
+        try:
+            return res
+        except Exception as e:
+            print(e)
+            return "Don't know the answer"
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        return {"name_of_model": self.model_name}
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom"
+
+
+class CustomRwkvHttpLLM(LLM):
+    model_name = "rwkv-4-raven"
 
     def model_pipeline(self, prompt: str) -> str:
         completion = openai.ChatCompletion.create(

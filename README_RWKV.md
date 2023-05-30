@@ -1,12 +1,28 @@
 ## Installation and Setup
 
-- Install the Python package with `pip install rwkv`
-- Install the tokenizer Python package with `pip install tokenizer`
+- Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+- Create a conda environment
+
+```
+conda create -n llama-index python=3.11.3
+conda activate llama-index
+```
+
+- Install g++ and CUDA
+
+```
+mamba install -c nvidia -c conda-forge cxx-compiler==1.1.3 cuda cuda-toolkit
+```
+
+- Install the Python package with `pip install -r requirements.txt`
+
 - Download a [RWKV model](https://huggingface.co/BlinkDL/rwkv-4-raven/tree/main) and place it in your desired directory
 
     ```
-    wget xxx -O /data/rwkv-14b-v11/RWKV-4-Raven-14B-v11x-Eng99-Other1-20230501-ctx8192.pt
-    wget https://raw.githubusercontent.com/BlinkDL/ChatRWKV/main/20B_tokenizer.json -O /data/rwkv-14b-v11/20B_tokenizer.json
+    mkdir models/rwkv-4-raven
+    wget xxx -O ./models/rwkv-4-raven/RWKV-4-Raven-14B-v11x-Eng99-Other1-20230501-ctx8192.pth
+    wget https://raw.githubusercontent.com/BlinkDL/ChatRWKV/main/20B_tokenizer.json -O ./models/rwkv-4-raven/20B_tokenizer.json
     ```
 
 - Download [the tokens file](https://raw.githubusercontent.com/BlinkDL/ChatRWKV/main/20B_tokenizer.json)

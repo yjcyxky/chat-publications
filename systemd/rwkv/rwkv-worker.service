@@ -1,0 +1,14 @@
+[Unit]
+Description=RWKV Worker Service
+Requires=rwkv-controller.service
+
+[Service]
+Type=simple
+User=root
+Environment="PATH=/data/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 -m fastchat.serve.model_worker --model-path /data/chat-publications/models/rwkv-4-raven/RWKV-4-Raven-14B-v11x-Eng99-Other1-20230501-ctx8192.pth --model-name rwkv-4-raven --cpu-offloading --device cpu
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

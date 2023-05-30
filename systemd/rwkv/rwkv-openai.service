@@ -1,0 +1,14 @@
+[Unit]
+Description=RWKV OpenAI Service
+Requires=rwkv-worker.service
+
+[Service]
+Type=simple
+User=root
+Environment="PATH=/data/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/data/miniconda3/envs/llama-index/bin/python3 -m fastchat.serve.openai_api_server --host localhost --port 8000 --controller-address http://localhost:21001
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
