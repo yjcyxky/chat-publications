@@ -59,11 +59,11 @@ def chatbot():
 
 @chatbot.command(help="Build index from directory of documents.")
 @click.option('--directory-path', '-d', required=True, help="The directory which saved the documents.")
-@click.option('--llm-type', '-l', default="custom", help="The type of language model.", type=click.Choice(["custom", "custom-http"]))
-@click.option('--mode', '-M', default="node", help="The mode of indexing.", type=click.Choice(["node", "default"]))
-@click.option('--llm-model', '-m', default="vicuna", help="The type of language model.", type=click.Choice(["vicuna", "rwkv"]))
-@click.option('--index-type', '-i', default="default", help="The type of index.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
-@click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index.")
+@click.option('--llm-type', '-l', default="custom-http", help="The type of language model. default is custom-http.", type=click.Choice(["custom", "custom-http"]))
+@click.option('--mode', '-M', default="node", help="The mode of indexing. default is node (It will treat each file as a single node. It's suitable for pubmed abstract.).", type=click.Choice(["node", "default"]))
+@click.option('--llm-model', '-m', default="vicuna", help="The type of language model. default is vicuna", type=click.Choice(["vicuna", "rwkv"]))
+@click.option('--index-type', '-i', default="default", help="The type of index. default is default.", type=click.Choice(["default", "qdrant", "qdrant-prod"]))
+@click.option('--persist-dir', '-p', default=os.getcwd(), help="The directory which saved the index. default is current directory.")
 def index(directory_path, llm_type, mode, llm_model, index_type, persist_dir):
     service_context = get_service_context_by_llm_type(llm_type, model_name=llm_model)
     storage_context = get_storage_context(

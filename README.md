@@ -94,8 +94,17 @@ cd chat-publications
 
 
 ## How to run ChatGPT with llama-index?
-### How to build index for my own data?
+
+Assume your data is in the folder `data/my-project`.
+
+### How to build index for your own data?
 
 ```
-python chatbot.py index -d data/my-project
+python chatbot_chatgpt.py index -d data/my-project
+```
+
+### How to query index for your own data?
+
+```
+python chatbot_chatgpt.py query -d data/my-project
 ```
