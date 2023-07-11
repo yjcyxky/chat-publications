@@ -1,3 +1,8 @@
 .DS_Store
 docs/publications
 !docs/.gitkeep
+data
+data_json
+data_pubtext
+pubmed/pubmed_baseline.html
+pubmed/pubmed_links.txt

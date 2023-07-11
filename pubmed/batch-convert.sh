@@ -1,7 +1,7 @@
 #!/bin/bash
 
-datadir=$0
-outputdir=$1
+datadir=$1
+outputdir=$2
 scriptdir=`dirname $0`
 
 if [ -z "$datadir" ]; then
