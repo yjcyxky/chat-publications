@@ -6,3 +6,7 @@ docker
 huggingface
 models
 __pycache__
+docs/publications
+!docs/.gitkeep
+pubmed/pubmed_baseline.html
+pubmed/pubmed_links.txt

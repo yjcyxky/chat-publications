@@ -17,6 +17,8 @@ do
   source_md5=`cat ${i}.md5 | cut -d ' ' -f 2`
 
   if [ ${source_md5} != ${md5} ]; then
-    echo "${i}: not match"
+    echo "${i}: not matched"
+  else
+    echo "${i}: matched"
   fi
 done

@@ -64,7 +64,7 @@ abstract: abstract of publication
 ```
 
 ```bash
-bash json2pubtext.py -f data_json -o data_pubtext
+python3 json2pubtext.py -f data_json -o data_pubtext
 ```
 
 ### Build index
