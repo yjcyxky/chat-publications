@@ -3,6 +3,9 @@ import logging
 from llama_index import GPTVectorStoreIndex, SimpleDirectoryReader
 import gradio as gr
 import click
+import uuid
+import json
+from llama_index.data_structs.node import Node
 
 import sys
 import os
@@ -52,6 +55,44 @@ def launch_chatbot(persist_dir, index_type="default", llm_type="custom", similar
                        collection_name="pubmed")
 
 
+def replace_all_chars(text, chars=['\n'], replacement=" "):
+    for char in chars:
+        text = text.replace(char, replacement)
+    return text
+
+
+def read_json(json_files):
+    nodes = []
+    keywords_lst = []
+    for file in json_files:
+        print(f"Loading {file}")
+        with open(file, "r") as f:
+            data = json.load(f)
+            for row in data:
+                if not row["title"] or not row["abstract"]:
+                    continue
+
+                uuid_str = str(uuid.uuid4())
+                keys = list(row.keys())
+                keywords = row["keywords"].split(";")
+                keywords_lst.append(
+                    [keyword.strip() for keyword in keywords]
+                )
+                content = [
+                    f"{key}: {replace_all_chars(str(row[key]))}" for key in keys
+                    if key in ["title", "abstract", "keywords"]]
+                extra_info = {
+                    key: row[key]
+                    for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate", "authors", "title"]
+                }
+
+                content = "\n".join(content)
+                node = Node(text=content, doc_id=uuid_str,
+                            extra_info=extra_info)
+                nodes.append(node)
+    return nodes, keywords_lst
+
+
 @click.group()
 def chatbot():
     pass
@@ -71,67 +112,37 @@ def index(directory_path, llm_type, mode, llm_model, index_type, persist_dir):
         create_collection=True, collection_name="pubmed"
     )
 
-    def replace_all_chars(text, chars=['\n'], replacement=" "):
-        for char in chars:
-            text = text.replace(char, replacement)
-        return text
-
     # We need to build three types of node:
     # - by title + abstract + pmid [Vector Store Index]
     # - by keywords + title + abstract + pmid [Keyword Table]
     # - by title + review full text [Tree Index]
     if mode == "node":
-        import uuid
-        import json
-        from llama_index.data_structs.node import Node
         nodes = []
         keywords_lst = []
         # TODO: When the number of documents is large, we should use a more efficient way to load the data.
-        for file in os.listdir(directory_path):
-            # Treat each .txt file as a node, and the content of the file as the text of the node.
-            # So we can load the whole file as the context of query. It maybe a good idea when you want to
-            # search the answer from related single publicaion.
-            if file.endswith(".json"):
-                print(f"Loading {file}")
-                with open(os.path.join(directory_path, file), "r") as f:
-                    data = json.load(f)
-                    for row in data:
-                        if not row["title"] or not row["abstract"]:
-                            continue
+        files = [os.path.join(directory_path, file) for file in os.listdir(directory_path) if file.endswith(".json")]
+        # Treat each .txt file as a node, and the content of the file as the text of the node.
+        # So we can load the whole file as the context of query. It maybe a good idea when you want to
+        # search the answer from related single publicaion.
 
-                        uuid_str = str(uuid.uuid4())
-                        keys = list(row.keys())
-                        keywords = row["keywords"].split(";")
-                        keywords_lst.append(
-                            [keyword.strip() for keyword in keywords]
-                        )
-                        content = [
-                            f"{key}: {replace_all_chars(str(row[key]))}" for key in keys
-                            if key in ["title", "abstract", "keywords"]]
-                        extra_info = {
-                            key: row[key]
-                            for key in keys if key in ["pmid", "doi", "country", "journal", "pubdate", "authors", "title"]
-                        }
+        # Load the data by 100 files each time.
+        for i in range(0, len(files), 100):
+            nodes, keywords_lst = read_json(files[i:i+100])
+            print(f"Loaded {i+100} files.")
+            print("Building index...")
+            doc_index = GPTVectorStoreIndex(
+                nodes, service_context=service_context,
+                storage_context=storage_context
+            )
+            doc_index.set_index_id("doc_vector_index")
 
-                        content = "\n".join(content)
-                        node = Node(text=content, doc_id=uuid_str,
-                                    extra_info=extra_info)
-                        nodes.append(node)
-
-        print("Building index...")
-        doc_index = GPTVectorStoreIndex(
-            nodes, service_context=service_context,
-            storage_context=storage_context
-        )
-        doc_index.set_index_id("doc_vector_index")
-
-        keyword_index = CustomKeywordTableIndex(
-            nodes,
-            keywords=keywords_lst,
-            service_context=service_context,
-            storage_context=storage_context
-        )
-        keyword_index.set_index_id("keyword_table_index")
+            keyword_index = CustomKeywordTableIndex(
+                nodes,
+                keywords=keywords_lst,
+                service_context=service_context,
+                storage_context=storage_context
+            )
+            keyword_index.set_index_id("keyword_table_index")
     else:
         print("Loading documents...")
         documents = SimpleDirectoryReader(

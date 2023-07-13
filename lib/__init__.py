@@ -312,7 +312,7 @@ def get_chatbot(similarity=0.8, similarity_top_k=10, persist_dir=os.getcwd(), in
                                         ],
                                         text_qa_template=qa_prompt,
                                         index_id=index_id,
-                                        collection_name="pubmed")
+                                        collection_name=collection_name)
         
     def remove_redundant_blank(text):
         return " ".join(text.split())
